@@ -1,11 +1,16 @@
-# Control Application for DFRobot micro:Maqueen Plus EN V1 Robot Car
+# Arduino Application for DFRobot micro:Maqueen Plus EN V1 Robot Car
 
 ## DFRobot micro:Maqueen Plus EN V1 Robot Car
 An Advanced STEM Education Robot with six line-tracking sensors, IR received, ultrasonic sensor, RGB ambient lights, LED car lights, buzzer etc.
-For more info check: https://www.dfrobot.com/product-2026.html
+
+For more info see: https://www.dfrobot.com/product-2026.html
 
 ## Mbits ESP32 Development Board
 A pocket-sized microcontroller that has lots of features the same as Microbit V2. Mbits is an ESP32-WROVER-B based educational hardware suitable for students to learn how to program and experience hot topics such as IoT and AI. It ntegrates input and output hardware such as 25 full-color LED lights, microphones, buzzers and it is also equipped with a 2.4GHz Radio/BLE WiFi & Bluetooth 4.2. The programming can be done in Arduino IDE.
+
+For more info see: https://www.elecrow.com/mbits.html
+
+For instructions how to use Mbit on Arduino see: https://www.elecrow.com/wiki/index.php?title=Mbits#Use_on_Arduino
 
 ## Robot Car Communication Diagram
 
