@@ -3,6 +3,7 @@
 #include <WebServer.h>
 #include <ESPmDNS.h>
 #include <DFRobot_MaqueenPlus.h>
+#include <HTTPClient.h>
 
 // create the MaqueenPlus robot car object
 DFRobot_MaqueenPlus  MaqueenPlus;
@@ -20,13 +21,20 @@ bool busy = false;
 long startLocation = 0;
 long endLocation = 0;
 
+// production areas locations: 1, 2, 3, 4
+int firstProductionAreaLocation = 1;
+int lastProductionAreaLocation = 4;
+int mainRoboticArmLocation = 5;
+// parking areas locations: 6, 7, 8, 9
+int firstParkingAreaLocation = 6;
+int lastParkingAreaLocation = 9;
+
 int numOfRightTurnsToPass, numOfLeftTurnsToPass;
 int numOfRightTurns = 0, numOfLeftTurns = 0;
 
 // webserver handles
 void handleRoot() {
-
-  server.send(200, "text/plain", "hello from esp32!");
+  server.send(200, "text/plain", "Hello from DF micro:Maqueen Plus!");
 }
 
 void handleNotFound() {
@@ -98,11 +106,37 @@ void loop() {
   switch (state) {
     // default case, the car is free (busy = false) and waits for the next request to move
     case 0:
+      numOfLeftTurnsToPass = 0;
+      numOfRightTurnsToPass = 0;
+
       if (busy) {
-        if (endLocation < startLocation)
-          numOfRightTurnsToPass = 2 * (endLocation - 1);
-        else
-          numOfRightTurnsToPass = 2 * (endLocation - 5);
+        // calculate the number of right turns to pass
+        if (endLocation < startLocation) {
+          // first check if the start location (parking area) is positioned before the main robotic arm
+          if (startLocation < mainRoboticArmLocation) {
+            numOfRightTurnsToPass = 2;
+          }
+          // now consider how many production areas are positioned before the end location
+          numOfRightTurnsToPass += 2 * (endLocation - firstProductionAreaLocation);
+        }
+        else {
+          // first check if the end location (parking area) is positioned behind the main robotic arm
+          if (endLocation > mainRoboticArmLocation) {
+            numOfRightTurnsToPass = 2;
+          }
+          // now consider how many production areas are positioned behind the start location
+          numOfRightTurnsToPass += 2 * (lastProductionAreaLocation - startLocation);
+        }
+
+        // calculate the number of left turns to pass
+        if (endLocation < startLocation) {
+          // consider how many parking areas are positioned behind the start location
+          numOfLeftTurnsToPass += 2 * (lastParkingAreaLocation - startLocation);
+        }
+        else {
+          // consider how many parking areas are positioned before the end location
+          numOfLeftTurnsToPass += 2 * (endLocation - firstParkingAreaLocation);
+        }
 
         numOfLeftTurns = 0;
         numOfRightTurns = 0;
@@ -113,6 +147,12 @@ void loop() {
 
     // case 1: the car moves forward following the line
     case 1:
+      // if the car detects an object within 10 cm, it stops and waits
+      if (MaqueenPlus.ultraSonic(MaqueenPlus.eP1, MaqueenPlus.eP2) < 10) {
+        stop();
+        break;
+      }
+      // there are no obstacles, move forward
       moveForward();
 
       //the car detects the location for the left turn at the grid outer borders --> the car must turn left
@@ -173,10 +213,11 @@ void loop() {
         break;
       }
 
-      // TODO: DETECT THE END LOCATION FOR THE CAR MOVE
-      // HOW? ALL PRODUCTION AREAS AND WAREHOUSE (SYSTEM APP) MUST BE EQUIPPED WITH SOME IDENTIFICATION
-      // RFID??
-
+      //the car detects the end location for the car move (either the production area or the parking area)
+      if (MaqueenPlus.getPatrol(MaqueenPlus.eL1) == 1 &&  MaqueenPlus.getPatrol(MaqueenPlus.eR1) == 1 && MaqueenPlus.getPatrol(MaqueenPlus.eL3) == 1 &&  MaqueenPlus.getPatrol(MaqueenPlus.eR3) == 1) {
+        stop();
+        break;
+      }
       break;
 
     // case 2: turn the car left at the grid outer turns
@@ -238,11 +279,40 @@ void loop() {
         state = 1;
       }
       break;
+
+    // case 8: the car is at the end location --> send http message to Node.js control app and switch to state 0
+    case 8:
+      // call Node.js control app
+      // create HTTP client
+      HTTPClient http;
+      // set server host and path
+      http.begin("193.2.80.85", "/transferCompleted"); //HTTP
+      // start the connection and send HTTP header
+      int httpCode = http.GET();
+
+      // httpCode will be negative on error
+      if (httpCode > 0) {
+        // HTTP header has been send and Server response header has been handled
+        Serial.println("HTTP response code: " + httpCode);
+        Serial.println("HTTP response: " + http.getString());
+
+        // set status (busy) to false and return to the default case to wait for a new request
+        busy = false;
+        state = 0;
+      }
+      // error sending HTTP request to the Node.js control app, retry
+      else {
+        Serial.println("HTTP response code: " + httpCode);
+        Serial.println("HTTP GET failed, error:");
+        Serial.println(http.errorToString(httpCode).c_str());
+      }
+
   }
 }
 
 // basic line following
 void moveForward() {
+
   // if sensors L1 and R1 detect the line, move straight forward
   if (MaqueenPlus.getPatrol(MaqueenPlus.eL2) == 0 &&  MaqueenPlus.getPatrol(MaqueenPlus.eL1) == 1 && MaqueenPlus.getPatrol(MaqueenPlus.eR1) == 1 && MaqueenPlus.getPatrol(MaqueenPlus.eR2) == 0) {
     MaqueenPlus.motorControl(MaqueenPlus.eALL, MaqueenPlus.eCW, 50);
