@@ -11,7 +11,7 @@ A pocket-sized microcontroller that has lots of features the same as Microbit V2
 
 [![](https://mermaid.ink/img/pako:eNqNksFqGzEQhl9l0MkGx5Qel2AITg-lpYEEfPJlLM3GKrsaVZoNmJB3z1haJW0CSXf3MNL8mvn-WT0ay45MZzL9mShYuvZ4n3DcBwCImMRbHzEIbAEz3PKBNcQEWw6SeICrGN9Jd_9Ki-QsKsJfLAT8QFqie6mCMQ7eongOkMiSf6CsgRJlydBzAkkYck8pr-HykDbfBXTD8TicwB6Zs-rlSJBKV6td5YjyeqokldHSsC4Y2kVL3B9w8WUF9Vt_XZaUPtuLzWbXwaiciyxq7SdXuhVQcG1R5brxzpqevX0hQWspSkVoQM0c-L74Aa-hOk1EAGpM87-VMJf9fs4epnz6D_pmYqcmdMbnU7Bo_Wpdcss3qpsfr5oK3DSf-jtPSd1x_QFawydyMMxDqsCt28djn1nakLY8xoEU5G-O-pqVGSmN6J1e3cdyuYy2H2lvOg0d9TgNsjf78KTSKToU-ua8cDJdj0OmlcFJ-O4UrOkkTdRE8_WfVU_PvfIFSg)](https://mermaid-js.github.io/mermaid-live-editor/edit#pako:eNqNksFqGzEQhl9l0MkGx5Qel2AITg-lpYEEfPJlLM3GKrsaVZoNmJB3z1haJW0CSXf3MNL8mvn-WT0ay45MZzL9mShYuvZ4n3DcBwCImMRbHzEIbAEz3PKBNcQEWw6SeICrGN9Jd_9Ki-QsKsJfLAT8QFqie6mCMQ7eongOkMiSf6CsgRJlydBzAkkYck8pr-HykDbfBXTD8TicwB6Zs-rlSJBKV6td5YjyeqokldHSsC4Y2kVL3B9w8WUF9Vt_XZaUPtuLzWbXwaiciyxq7SdXuhVQcG1R5brxzpqevX0hQWspSkVoQM0c-L74Aa-hOk1EAGpM87-VMJf9fs4epnz6D_pmYqcmdMbnU7Bo_Wpdcss3qpsfr5oK3DSf-jtPSd1x_QFawydyMMxDqsCt28djn1nakLY8xoEU5G-O-pqVGSmN6J1e3cdyuYy2H2lvOg0d9TgNsjf78KTSKToU-ua8cDJdj0OmlcFJ-O4UrOkkTdRE8_WfVU_PvfIFSg)
 
-'''mermaid
+```mermaid
 sequenceDiagram
    participant C as Robot Car Control App
    participant V as Robot Car App
@@ -33,4 +33,4 @@ sequenceDiagram
       V->>C: transferCompleted
    end  
 
-'''
+```
