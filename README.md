@@ -10,27 +10,3 @@ A pocket-sized microcontroller that has lots of features the same as Microbit V2
 ## Robot Car Communication Diagram
 
 [![](https://mermaid.ink/img/pako:eNqNksFqGzEQhl9l0MkGx5Qel2AITg-lpYEEfPJlLM3GKrsaVZoNmJB3z1haJW0CSXf3MNL8mvn-WT0ay45MZzL9mShYuvZ4n3DcBwCImMRbHzEIbAEz3PKBNcQEWw6SeICrGN9Jd_9Ki-QsKsJfLAT8QFqie6mCMQ7eongOkMiSf6CsgRJlydBzAkkYck8pr-HykDbfBXTD8TicwB6Zs-rlSJBKV6td5YjyeqokldHSsC4Y2kVL3B9w8WUF9Vt_XZaUPtuLzWbXwaiciyxq7SdXuhVQcG1R5brxzpqevX0hQWspSkVoQM0c-L74Aa-hOk1EAGpM87-VMJf9fs4epnz6D_pmYqcmdMbnU7Bo_Wpdcss3qpsfr5oK3DSf-jtPSd1x_QFawydyMMxDqsCt28djn1nakLY8xoEU5G-O-pqVGSmN6J1e3cdyuYy2H2lvOg0d9TgNsjf78KTSKToU-ua8cDJdj0OmlcFJ-O4UrOkkTdRE8_WfVU_PvfIFSg)](https://mermaid-js.github.io/mermaid-live-editor/edit#pako:eNqNksFqGzEQhl9l0MkGx5Qel2AITg-lpYEEfPJlLM3GKrsaVZoNmJB3z1haJW0CSXf3MNL8mvn-WT0ay45MZzL9mShYuvZ4n3DcBwCImMRbHzEIbAEz3PKBNcQEWw6SeICrGN9Jd_9Ki-QsKsJfLAT8QFqie6mCMQ7eongOkMiSf6CsgRJlydBzAkkYck8pr-HykDbfBXTD8TicwB6Zs-rlSJBKV6td5YjyeqokldHSsC4Y2kVL3B9w8WUF9Vt_XZaUPtuLzWbXwaiciyxq7SdXuhVQcG1R5brxzpqevX0hQWspSkVoQM0c-L74Aa-hOk1EAGpM87-VMJf9fs4epnz6D_pmYqcmdMbnU7Bo_Wpdcss3qpsfr5oK3DSf-jtPSd1x_QFawydyMMxDqsCt28djn1nakLY8xoEU5G-O-pqVGSmN6J1e3cdyuYy2H2lvOg0d9TgNsjf78KTSKToU-ua8cDJdj0OmlcFJ-O4UrOkkTdRE8_WfVU_PvfIFSg)
-
-```mermaid
-sequenceDiagram
-   participant C as Robot Car Control App
-   participant V as Robot Car App
-
-  
-   Note over C: Control application receives requests for transfers. <br>It randomly chooses the robot car that transfers the parcel.
-   rect rgba(0, 0, 0, .2)
-      C->>V: move(startLocation, endLocation)
-   end  
-   Note over V: Robot car accepts the transfer request if <br> it is free  and rejects it if it is busy.
-   rect rgba(0, 0, 0, .2)
-     
-      V->>C: busy (request rejected)
-      V->>C: OK (request accepted)
-   end  
-   Note over V: Robot car moves to the required location.
-   
-      rect rgba(0, 0, 0, .2)
-      V->>C: transferCompleted
-   end  
-
-```
