@@ -5,7 +5,7 @@ An Advanced STEM Education Robot with six line-tracking sensors, IR received, ul
 For more info check: https://www.dfrobot.com/product-2026.html
 
 ## Mbits ESP32 Development Board
-A pocket-sized microcontroller that has lots of features the same as Microbit V2. Mbits is an ESP32-WROVER-B based educational hardware suitable for students to learn how to program and experience hot topics such as IoT and AI. It ntegrates input and output hardware such as 25 full-color LED lights, microphones, buzzers and it is also equipped with a 2.4GHz Radio/BLE WiFi & Bluetooth 4.2. The programming can be done in Arduino IDE.
+A pocket-sized microcontroller that has lots of features the same as Microbit V2. Mbits is an ESP32-WROVER-B based educational hardware suitable for students to learn how to program and experience hot topics such as IoT and AI. It integrates input and output hardware such as 25 full-color LED lights, microphones, buzzers and it is also equipped with a 2.4GHz Radio/BLE WiFi & Bluetooth 4.2. The programming can be done in Arduino IDE.
 
 ## Robot Car Communication Diagram
 
