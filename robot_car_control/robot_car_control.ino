@@ -1,39 +1,144 @@
-#include <WiFi.h>
+//#include <Arduino.h>
+#include <FastLED.h>
+#include "Dots5x5font.h"
+#include <WiFi.h>;
 #include <WiFiClient.h>
 #include <WebServer.h>
 #include <ESPmDNS.h>
 #include <DFRobot_MaqueenPlus.h>
 #include <HTTPClient.h>
 
-// create the MaqueenPlus robot car object
-DFRobot_MaqueenPlus  MaqueenPlus;
-
-// set WiFi parameters
-const char* ssid     = "yourssid";
-const char* password = "yourpasswd";
-WebServer server(80);
-
+// **************** global app variables *********************
 int state = 0;
 bool busy = false;
+int sensorGrayscaleSplittingValue = 150;
 // start and end location for the robot car moves
 //    these two values are set when the request to move is received via WiFi
 //    NOTE: the request to move is only processed after the previous request (move) is finished --> this is controlled by the outside app
-long startLocation = 0;
-long endLocation = 0;
+long sourceLocation = 0;
+long targetLocation = 0;
+long taskId = 0;
 
 // production areas locations: 1, 2, 3, 4
 int firstProductionAreaLocation = 1;
 int lastProductionAreaLocation = 4;
 int mainRoboticArmLocation = 5;
-// parking areas locations: 6, 7, 8, 9
+// parking areas locations: 6, 7
 int firstParkingAreaLocation = 6;
-int lastParkingAreaLocation = 9;
+int lastParkingAreaLocation = 7;
 
 int numOfRightTurnsToPass, numOfLeftTurnsToPass;
 int numOfRightTurns = 0, numOfLeftTurns = 0;
 
-// webserver handles
+// **************** WiFi parameters *********************
+const char* ssid     = "DESKTOP-4NT77NL-4917";
+const char* password = "TPlaptopHOTSPOT";
+WebServer server(80);
+
+// **************** Mbits I2C settings *********************
+// define I2C data and clock pins used on Mbits ESP32 board
+#define I2C_SDA 22
+#define I2C_SCL 21
+
+// create a pointer to DFRobot_MaqueenPlus object
+// --> this is done as we need to manually set I2C pins and create the DFRobot_MaqueenPlus object inside the setup() function
+// --> DFRobot_MaqueenPlus object is accessed via a pointer throughout the program
+DFRobot_MaqueenPlus* mp;
+// TwoWire object is needed for manual I2C pins definition
+TwoWire i2cCustomPins = TwoWire(0);
+
+// **************** Mbits LED matrix settings *********************
+#define NUM_ROWS 5
+#define NUM_COLUMNS 5
+#define NUM_LEDS (NUM_ROWS * NUM_COLUMNS)
+#define LED_PIN 13
+#define LED_TYPE WS2812B
+#define COLOR_ORDER GRB
+
+CRGBArray<NUM_LEDS> leds;
+uint8_t max_bright = 10;
+// definition of display colors
+CRGB myRGBcolor_zyvx(255, 0, 0);
+const uint8_t maxBitmap_zyvx[] = {
+  B00000, B11011, B00000, B10001, B01110
+};
+CRGB myRGBcolor_x6aa(16, 255, 0);
+const uint8_t maxBitmap_x6aa[] = {
+  B00000, B11011, B00000, B10001, B01110
+};
+
+void plotMatrixChar(CRGB (*matrix)[5], CRGB myRGBcolor, int x, char character, int width, int height) {
+  int y = 0;
+  if (width > 0 && height > 0) {
+    int charIndex = (int)character - 32;
+    int xBitsToProcess = width;
+    for (int i = 0; i < height; i++) {
+      byte fontLine = FontData[charIndex][i];
+      for (int bitCount = 0; bitCount < xBitsToProcess; bitCount++) {
+        CRGB pixelColour = CRGB(0, 0, 0);
+        if (fontLine & 0b10000000) {
+          pixelColour = myRGBcolor;
+        }
+        fontLine = fontLine << 1;
+        int xpos = x + bitCount;
+        int ypos = y + i;
+        if (xpos < 0 || xpos > 10 || ypos < 0 || ypos > 5);
+        else {
+          matrix[xpos][ypos] = pixelColour;
+        }
+      }
+    }
+  }
+}
+
+void ShowChar(char myChar, CRGB myRGBcolor) {
+  CRGB matrixBackColor[10][5];
+  int mapLED[] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24};
+  plotMatrixChar(matrixBackColor, myRGBcolor, 0 , myChar, 5, 5);
+  for (int x = 0; x < NUM_COLUMNS; x++) {
+    for (int y = 0; y < NUM_ROWS; y++) {
+      int stripIdx = mapLED[y * NUM_COLUMNS + x];
+      // Serial.println("index:" + String(stripIdx) + ", value: " + String(matrixBackColor[x][y]));
+      leds[stripIdx] = matrixBackColor[x][y];
+    }
+  }
+  FastLED.show();
+  FastLED.delay(30);
+}
+
+void ShowString(String sMessage, CRGB myRGBcolor) {
+  CRGB matrixBackColor[10][5];
+  int mapLED[] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24};
+  int messageLength = sMessage.length();
+  // Serial.println("string length:" + String(messageLength));
+  for (int x = 0; x < messageLength; x++) {
+    char myChar = sMessage[x];
+    plotMatrixChar(matrixBackColor, myRGBcolor, 0, myChar, 5, 5);
+    for (int sft = 0; sft <= 5; sft++) {
+      for (int x = 0; x < NUM_COLUMNS; x++) {
+        for (int y = 0; y < 5; y++) {
+          int stripIdx = mapLED[y * 5 + x];
+          if (x + sft < 5) {
+            leds[stripIdx] = matrixBackColor[x + sft][y];
+          } else {
+            leds[stripIdx] = CRGB(0, 0, 0);
+          }
+        }
+      }
+      FastLED.show();
+      if (sft < sensorGrayscaleSplittingValue) {
+        FastLED.delay(200);
+      } else {
+        FastLED.delay(30);
+      }
+    }
+  }
+}
+
+// **************** web server handles *********************
 void handleRoot() {
+
+  Serial.println("received a request to /");
   server.send(200, "text/plain", "Hello from DF micro:Maqueen Plus!");
 }
 
@@ -74,33 +179,77 @@ void setup() {
     Serial.println("MDNS responder started");
   }
 
+  Serial.println("define I2C pins");
+  i2cCustomPins.begin(I2C_SDA, I2C_SCL, 100000);
+
+  Serial.println("construct MaqueenPlus object");
+  mp = new DFRobot_MaqueenPlus(&i2cCustomPins, 0x10);
+
+  Serial.println("initialize MaqueenPlus I2C communication");
+  mp->begin();
+
+  // web server API endpoints
   server.on("/", handleRoot);
 
   server.on("/move", HTTP_GET, []() {
 
+    Serial.println("received an HTTP request to /move");
+
+    // server.send(200, "text/plain", "{status:accept}");
     if (busy) {
-      server.send(200, "text/plain", "{available:false}");
+      server.send(200, "text/plain", "{status:reject}");
     }
     else {
-      // first parameter in the GET message is the start location and the second parameter is the end location of the robot car move
-      startLocation = server.pathArg(0).toInt();
-      endLocation = server.pathArg(1).toInt();
-      busy = true;
-      server.send(200, "text/plain", "{available:true}");
+      // first parameter in the GET message is the source location, the second parameter is the target location of the robot car move,
+      // and the third parameter is the id of the task
+      // Serial.println("received an HTTP request to /move");
+      if (server.arg("source") == "")
+        server.send(200, "text/plain", "{status:reject, missing source location}");
+      else if (server.arg("target") == "")
+        server.send(200, "text/plain", "{status:reject, missing target location}");
+      else if (server.arg("taskId") == "")
+        server.send(200, "text/plain", "{status:reject, missing task id}");
+      else {
+        sourceLocation = server.arg("source").toInt();
+        targetLocation = server.arg("target").toInt();
+        taskId = server.arg("taskId").toInt();
+        // busy = true;
+        Serial.println("source: " + String(sourceLocation) + ", target: " + String(targetLocation) + ", taskId: " + String(taskId));
+        server.send(200, "text/plain", "{status:accept}");
+      }
     }
   });
 
   server.onNotFound(handleNotFound);
-
+  // start web server
   server.begin();
   Serial.println("HTTP server started");
-  server.begin();
 
+  // initialize ESP32 board matrix
+  FastLED.addLeds<LED_TYPE, LED_PIN, COLOR_ORDER>(leds, NUM_LEDS);
+  FastLED.setBrightness(max_bright);
+
+  // set MaqueenPlus front lights color
+  mp->setRGB(mp->eALL, mp->eBLUE);
+  // enable PID operation control
+  mp->PIDSwitch(mp->eON);
 }
 
 void loop() {
+
+  //  Serial.println(mp->getVersion());
+  delay(100);
+  //  stop();
+
+  //  checkAllSensors();
+
   // handle incoming requests
   server.handleClient();
+
+  //  Serial.println("robot state: " + String(state));
+  // ShowChar function expects a character, while state is an int value
+  //  --> adding 48 converts an integer value (0 to 9) to char (decimal values from 48 to 57)
+  // ShowChar(state + 48, myRGBcolor_zyvx);
 
   // car robot driving algorithm
   switch (state) {
@@ -111,44 +260,48 @@ void loop() {
 
       if (busy) {
         // calculate the number of right turns to pass
-        if (endLocation < startLocation) {
+        if (targetLocation < sourceLocation) {
           // first check if the start location (parking area) is positioned before the main robotic arm
-          if (startLocation < mainRoboticArmLocation) {
+          if (sourceLocation < mainRoboticArmLocation) {
             numOfRightTurnsToPass = 2;
           }
           // now consider how many production areas are positioned before the end location
-          numOfRightTurnsToPass += 2 * (endLocation - firstProductionAreaLocation);
+          numOfRightTurnsToPass += 2 * (targetLocation - firstProductionAreaLocation);
         }
         else {
           // first check if the end location (parking area) is positioned behind the main robotic arm
-          if (endLocation > mainRoboticArmLocation) {
+          if (targetLocation > mainRoboticArmLocation) {
             numOfRightTurnsToPass = 2;
           }
           // now consider how many production areas are positioned behind the start location
-          numOfRightTurnsToPass += 2 * (lastProductionAreaLocation - startLocation);
+          numOfRightTurnsToPass += 2 * (lastProductionAreaLocation - sourceLocation);
         }
 
         // calculate the number of left turns to pass
-        if (endLocation < startLocation) {
+        if (targetLocation < sourceLocation) {
           // consider how many parking areas are positioned behind the start location
-          numOfLeftTurnsToPass += 2 * (lastParkingAreaLocation - startLocation);
+          numOfLeftTurnsToPass = 2 * (lastParkingAreaLocation - sourceLocation);
         }
         else {
           // consider how many parking areas are positioned before the end location
-          numOfLeftTurnsToPass += 2 * (endLocation - firstParkingAreaLocation);
+          numOfLeftTurnsToPass = 2 * (targetLocation - firstParkingAreaLocation);
         }
 
         numOfLeftTurns = 0;
         numOfRightTurns = 0;
+        Serial.println("numOfLeftTurnsToPass: " + String(numOfLeftTurnsToPass) + ", numOfRightTurnsToPass: " + String(numOfRightTurnsToPass));
         // start the move
         state = 1;
       }
+
+      // Serial.println("left turns to pass: " + String(numOfLeftTurnsToPass));
+      // Serial.println("right turns to pass: " + String(numOfRightTurnsToPass));
       break;
 
     // case 1: the car moves forward following the line
     case 1:
       // if the car detects an object within 10 cm, it stops and waits
-      if (MaqueenPlus.ultraSonic(MaqueenPlus.eP1, MaqueenPlus.eP2) < 10) {
+      if (mp->ultraSonic(mp->eP0, mp->eP1) < 10) {
         stop();
         break;
       }
@@ -156,7 +309,8 @@ void loop() {
       moveForward();
 
       //the car detects the location for the left turn at the grid outer borders --> the car must turn left
-      if (MaqueenPlus.getPatrol(MaqueenPlus.eL1) == 0 &&  MaqueenPlus.getPatrol(MaqueenPlus.eR1) == 0 && MaqueenPlus.getPatrol(MaqueenPlus.eL3) == 1 &&  MaqueenPlus.getPatrol(MaqueenPlus.eR3) == 0) {
+      if (mp->getGrayscale(mp->eL1) < sensorGrayscaleSplittingValue &&  mp->getGrayscale(mp->eR1) < sensorGrayscaleSplittingValue
+          && mp->getGrayscale(mp->eL3) > sensorGrayscaleSplittingValue &&  mp->getGrayscale(mp->eR3) < sensorGrayscaleSplittingValue) {
         stop();
         state = 2;
         break;
@@ -164,10 +318,11 @@ void loop() {
 
       //the car detects the location for the left or right turn (coming out of the parking or production area)
       //  the car turns left if it is coming out of parking area or it turns right if it is coming out of production area
-      if (MaqueenPlus.getPatrol(MaqueenPlus.eL1) == 0 &&  MaqueenPlus.getPatrol(MaqueenPlus.eR1) == 0 && MaqueenPlus.getPatrol(MaqueenPlus.eL3) == 1 &&  MaqueenPlus.getPatrol(MaqueenPlus.eR3) == 1) {
+      if (mp->getGrayscale(mp->eL1) < sensorGrayscaleSplittingValue &&  mp->getGrayscale(mp->eR1) < sensorGrayscaleSplittingValue
+          && mp->getGrayscale(mp->eL3) > sensorGrayscaleSplittingValue &&  mp->getGrayscale(mp->eR3) > sensorGrayscaleSplittingValue) {
         stop();
         // car is coming out of parking area --> it turns left
-        if (startLocation > endLocation) {
+        if (sourceLocation > targetLocation) {
           state = 3;
         }
         // car is coming of production area --> it turns right
@@ -180,8 +335,9 @@ void loop() {
       //the car detects the location for the left turn at the parking area --> the car turns left under two conditions:
       //  1. it is moving from a production area (1 to 4) to a parking area (5 to 9)
       //  2. it has passed the "numOfLeftTurnsToPass" turns
-      if (MaqueenPlus.getPatrol(MaqueenPlus.eL1) == 1 &&  MaqueenPlus.getPatrol(MaqueenPlus.eR1) == 1 && MaqueenPlus.getPatrol(MaqueenPlus.eL3) == 1 &&  MaqueenPlus.getPatrol(MaqueenPlus.eR3) == 0) {
-        if ((startLocation < endLocation) && (numOfLeftTurns >= numOfLeftTurnsToPass)) {
+      if (mp->getGrayscale(mp->eL1) > sensorGrayscaleSplittingValue &&  mp->getGrayscale(mp->eR1) > sensorGrayscaleSplittingValue
+          && mp->getGrayscale(mp->eL3) > sensorGrayscaleSplittingValue &&  mp->getGrayscale(mp->eR3) < sensorGrayscaleSplittingValue) {
+        if ((sourceLocation < targetLocation) && (numOfLeftTurns >= numOfLeftTurnsToPass)) {
           stop();
           state = 4;
           break;
@@ -195,8 +351,9 @@ void loop() {
       //the car detects the location for the right turn at the production area --> the car turns right under two conditions:
       //  1. it is moving from a parking area (5 to 9) to a production area (1 to 4)
       //  2. it has passed the "numOfRightRightTurnsToPass" turns
-      if (MaqueenPlus.getPatrol(MaqueenPlus.eL1) == 1 &&  MaqueenPlus.getPatrol(MaqueenPlus.eR1) == 1 && MaqueenPlus.getPatrol(MaqueenPlus.eL3) == 1 &&  MaqueenPlus.getPatrol(MaqueenPlus.eR3) == 0) {
-        if ((startLocation > endLocation) && (numOfRightTurns >= numOfRightTurnsToPass)) {
+      if (mp->getGrayscale(mp->eL1) > sensorGrayscaleSplittingValue &&  mp->getGrayscale(mp->eR1) > sensorGrayscaleSplittingValue
+          && mp->getGrayscale(mp->eL3) > sensorGrayscaleSplittingValue &&  mp->getGrayscale(mp->eR3) < sensorGrayscaleSplittingValue) {
+        if ((sourceLocation > targetLocation) && (numOfRightTurns >= numOfRightTurnsToPass)) {
           stop();
           state = 6;
           break;
@@ -207,14 +364,16 @@ void loop() {
         }
       }
       //the car detects the location for the right turn going out of the parking area --> the car must turn right
-      if (MaqueenPlus.getPatrol(MaqueenPlus.eL1) == 0 &&  MaqueenPlus.getPatrol(MaqueenPlus.eR1) == 0 && MaqueenPlus.getPatrol(MaqueenPlus.eL3) == 0 &&  MaqueenPlus.getPatrol(MaqueenPlus.eR3) == 1) {
+      if (mp->getGrayscale(mp->eL1) < sensorGrayscaleSplittingValue &&  mp->getGrayscale(mp->eR1) < sensorGrayscaleSplittingValue
+          && mp->getGrayscale(mp->eL3) < sensorGrayscaleSplittingValue &&  mp->getGrayscale(mp->eR3) > sensorGrayscaleSplittingValue) {
         stop();
         state = 7;
         break;
       }
 
       //the car detects the end location for the car move (either the production area or the parking area)
-      if (MaqueenPlus.getPatrol(MaqueenPlus.eL1) == 1 &&  MaqueenPlus.getPatrol(MaqueenPlus.eR1) == 1 && MaqueenPlus.getPatrol(MaqueenPlus.eL3) == 1 &&  MaqueenPlus.getPatrol(MaqueenPlus.eR3) == 1) {
+      if (mp->getGrayscale(mp->eL1) > sensorGrayscaleSplittingValue &&  mp->getGrayscale(mp->eR1) > sensorGrayscaleSplittingValue
+          && mp->getGrayscale(mp->eL3) > sensorGrayscaleSplittingValue &&  mp->getGrayscale(mp->eR3) > sensorGrayscaleSplittingValue) {
         stop();
         break;
       }
@@ -224,7 +383,8 @@ void loop() {
     case 2:
       turnLeft();
       // the car turns until the sensors L1 and R1 detect the line and sensors L2 and R2 do not detect the line
-      if (MaqueenPlus.getPatrol(MaqueenPlus.eL2) == 0 &&  MaqueenPlus.getPatrol(MaqueenPlus.eL1) == 1 && MaqueenPlus.getPatrol(MaqueenPlus.eR1) == 1 && MaqueenPlus.getPatrol(MaqueenPlus.eR2) == 0) {
+      if (mp->getGrayscale(mp->eL2) < sensorGrayscaleSplittingValue &&  mp->getGrayscale(mp->eL1) > sensorGrayscaleSplittingValue
+          && mp->getGrayscale(mp->eR1) > sensorGrayscaleSplittingValue && mp->getGrayscale(mp->eR2) < sensorGrayscaleSplittingValue) {
         stop();
         state = 1;
       }
@@ -234,7 +394,7 @@ void loop() {
     case 3:
       turnLeft();
       // the car turns until the sensors L1 and R1 detect the line and sensors L2 and R2 do not detect the line
-      if (MaqueenPlus.getPatrol(MaqueenPlus.eL2) == 0 &&  MaqueenPlus.getPatrol(MaqueenPlus.eL1) == 1 && MaqueenPlus.getPatrol(MaqueenPlus.eR1) == 1 && MaqueenPlus.getPatrol(MaqueenPlus.eR2) == 0) {
+      if (mp->getGrayscale(mp->eL2) < sensorGrayscaleSplittingValue &&  mp->getGrayscale(mp->eL1) > sensorGrayscaleSplittingValue && mp->getGrayscale(mp->eR1) > sensorGrayscaleSplittingValue && mp->getGrayscale(mp->eR2) < sensorGrayscaleSplittingValue) {
         stop();
         state = 1;
       }
@@ -244,7 +404,8 @@ void loop() {
     case 4:
       turnLeft();
       // the car turns until the sensors L1, R1, L3 and R3 all detect the line
-      if (MaqueenPlus.getPatrol(MaqueenPlus.eL1) == 1 &&  MaqueenPlus.getPatrol(MaqueenPlus.eR1) == 1 && MaqueenPlus.getPatrol(MaqueenPlus.eL3) == 1 &&  MaqueenPlus.getPatrol(MaqueenPlus.eR3) == 1) {
+      if (mp->getGrayscale(mp->eL1) > sensorGrayscaleSplittingValue &&  mp->getGrayscale(mp->eR1) > sensorGrayscaleSplittingValue
+          && mp->getGrayscale(mp->eL3) > sensorGrayscaleSplittingValue &&  mp->getGrayscale(mp->eR3) > sensorGrayscaleSplittingValue) {
         stop();
         state = 1;
       }
@@ -254,7 +415,8 @@ void loop() {
     case 5:
       turnRight();
       // the car turns until the sensors L1 and R1 detect the line and sensors L2 and R2 do not detect the line
-      if (MaqueenPlus.getPatrol(MaqueenPlus.eL2) == 0 &&  MaqueenPlus.getPatrol(MaqueenPlus.eL1) == 1 && MaqueenPlus.getPatrol(MaqueenPlus.eR1) == 1 && MaqueenPlus.getPatrol(MaqueenPlus.eR2) == 0) {
+      if (mp->getGrayscale(mp->eL2) < sensorGrayscaleSplittingValue &&  mp->getGrayscale(mp->eL1) > sensorGrayscaleSplittingValue
+          && mp->getGrayscale(mp->eR1) > sensorGrayscaleSplittingValue && mp->getGrayscale(mp->eR2) < sensorGrayscaleSplittingValue) {
         stop();
         state = 1;
       }
@@ -264,7 +426,8 @@ void loop() {
     case 6:
       turnRight();
       // the car turns until the sensors L1, R1, L3 and R3 all detect the line
-      if (MaqueenPlus.getPatrol(MaqueenPlus.eL1) == 1 &&  MaqueenPlus.getPatrol(MaqueenPlus.eR1) == 1 && MaqueenPlus.getPatrol(MaqueenPlus.eL3) == 1 &&  MaqueenPlus.getPatrol(MaqueenPlus.eR3) == 1) {
+      if (mp->getGrayscale(mp->eL1) > sensorGrayscaleSplittingValue &&  mp->getGrayscale(mp->eR1) > sensorGrayscaleSplittingValue
+          && mp->getGrayscale(mp->eL3) > sensorGrayscaleSplittingValue &&  mp->getGrayscale(mp->eR3) > sensorGrayscaleSplittingValue) {
         stop();
         state = 1;
       }
@@ -274,7 +437,8 @@ void loop() {
     case 7:
       turnRight();
       // the car turns until the sensors L1, R1, L3 and R3 all detect the line
-      if (MaqueenPlus.getPatrol(MaqueenPlus.eL1) == 1 &&  MaqueenPlus.getPatrol(MaqueenPlus.eR1) == 1 && MaqueenPlus.getPatrol(MaqueenPlus.eL3) == 0 &&  MaqueenPlus.getPatrol(MaqueenPlus.eR3) == 1) {
+      if (mp->getGrayscale(mp->eL1) > sensorGrayscaleSplittingValue &&  mp->getGrayscale(mp->eR1) > sensorGrayscaleSplittingValue
+          && mp->getGrayscale(mp->eL3) < sensorGrayscaleSplittingValue &&  mp->getGrayscale(mp->eR3) > sensorGrayscaleSplittingValue) {
         stop();
         state = 1;
       }
@@ -286,7 +450,7 @@ void loop() {
       // create HTTP client
       HTTPClient http;
       // set server host and path
-      http.begin("193.2.80.85", "/transferCompleted"); //HTTP
+      http.begin("193.2.80.85/report?taskId" + String(taskId) + "&state=done"); //HTTP
       // start the connection and send HTTP header
       int httpCode = http.GET();
 
@@ -306,57 +470,75 @@ void loop() {
         Serial.println("HTTP GET failed, error:");
         Serial.println(http.errorToString(httpCode).c_str());
       }
-
   }
 }
 
 // basic line following
 void moveForward() {
-
+  Serial.println("moving forward");
   // if sensors L1 and R1 detect the line, move straight forward
-  if (MaqueenPlus.getPatrol(MaqueenPlus.eL2) == 0 &&  MaqueenPlus.getPatrol(MaqueenPlus.eL1) == 1 && MaqueenPlus.getPatrol(MaqueenPlus.eR1) == 1 && MaqueenPlus.getPatrol(MaqueenPlus.eR2) == 0) {
-    MaqueenPlus.motorControl(MaqueenPlus.eALL, MaqueenPlus.eCW, 50);
+  if (mp->getGrayscale(mp->eL2) < sensorGrayscaleSplittingValue &&  mp->getGrayscale(mp->eL1) > sensorGrayscaleSplittingValue
+      && mp->getGrayscale(mp->eR1) > sensorGrayscaleSplittingValue && mp->getGrayscale(mp->eR2) < sensorGrayscaleSplittingValue) {
+    mp->motorControl(mp->eALL, mp->eCW, 50);
   }
   else {
     // if L1 and L2 do not detect the line, but R1 and R2 do, turn left
-    if (MaqueenPlus.getPatrol(MaqueenPlus.eL2) == 0 &&  MaqueenPlus.getPatrol(MaqueenPlus.eL1) == 0 && MaqueenPlus.getPatrol(MaqueenPlus.eR1) == 1 && MaqueenPlus.getPatrol(MaqueenPlus.eR2) == 1) {
-      MaqueenPlus.motorControl(MaqueenPlus.eLEFT, MaqueenPlus.eCW, 160);
-      MaqueenPlus.motorControl(MaqueenPlus.eRIGHT, MaqueenPlus.eCW, 50);
+    if (mp->getGrayscale(mp->eL2) < sensorGrayscaleSplittingValue &&  mp->getGrayscale(mp->eL1) < sensorGrayscaleSplittingValue
+        && mp->getGrayscale(mp->eR1) > sensorGrayscaleSplittingValue && mp->getGrayscale(mp->eR2) > sensorGrayscaleSplittingValue) {
+      mp->motorControl(mp->eLEFT, mp->eCW, 160);
+      mp->motorControl(mp->eRIGHT, mp->eCW, 50);
     }
     // if only R2 detects the line, turn left a bit faster
-    else if (MaqueenPlus.getPatrol(MaqueenPlus.eL2) == 0 &&  MaqueenPlus.getPatrol(MaqueenPlus.eL1) == 0 && MaqueenPlus.getPatrol(MaqueenPlus.eR1) == 0 && MaqueenPlus.getPatrol(MaqueenPlus.eR2) == 1) {
-      MaqueenPlus.motorControl(MaqueenPlus.eLEFT, MaqueenPlus.eCW, 200);
-      MaqueenPlus.motorControl(MaqueenPlus.eRIGHT, MaqueenPlus.eCW, 50);
+    else if (mp->getGrayscale(mp->eL2) < sensorGrayscaleSplittingValue &&  mp->getGrayscale(mp->eL1) < sensorGrayscaleSplittingValue
+             && mp->getGrayscale(mp->eR1) < sensorGrayscaleSplittingValue && mp->getGrayscale(mp->eR2) > sensorGrayscaleSplittingValue) {
+      mp->motorControl(mp->eLEFT, mp->eCW, 200);
+      mp->motorControl(mp->eRIGHT, mp->eCW, 50);
     }
     // if R1 and R2 do not detect the line, but L1 and L2 do, turn right
-    if (MaqueenPlus.getPatrol(MaqueenPlus.eL2) == 1 &&  MaqueenPlus.getPatrol(MaqueenPlus.eL1) == 1 && MaqueenPlus.getPatrol(MaqueenPlus.eR1) == 0 && MaqueenPlus.getPatrol(MaqueenPlus.eR2) == 0) {
-      MaqueenPlus.motorControl(MaqueenPlus.eLEFT, MaqueenPlus.eCW, 50);
-      MaqueenPlus.motorControl(MaqueenPlus.eRIGHT, MaqueenPlus.eCW, 160);
+    if (mp->getGrayscale(mp->eL2) > sensorGrayscaleSplittingValue &&  mp->getGrayscale(mp->eL1) > sensorGrayscaleSplittingValue
+        && mp->getGrayscale(mp->eR1) < sensorGrayscaleSplittingValue && mp->getGrayscale(mp->eR2) < sensorGrayscaleSplittingValue) {
+      mp->motorControl(mp->eLEFT, mp->eCW, 50);
+      mp->motorControl(mp->eRIGHT, mp->eCW, 160);
     }
     // if only L2 detects the line, turn right a bit faster
-    else if (MaqueenPlus.getPatrol(MaqueenPlus.eL2) == 1 &&  MaqueenPlus.getPatrol(MaqueenPlus.eL1) == 0 && MaqueenPlus.getPatrol(MaqueenPlus.eR1) == 0 && MaqueenPlus.getPatrol(MaqueenPlus.eR2) == 0) {
-      MaqueenPlus.motorControl(MaqueenPlus.eLEFT, MaqueenPlus.eCW, 50);
-      MaqueenPlus.motorControl(MaqueenPlus.eRIGHT, MaqueenPlus.eCW, 200);
+    else if (mp->getGrayscale(mp->eL2) > sensorGrayscaleSplittingValue &&  mp->getGrayscale(mp->eL1) < sensorGrayscaleSplittingValue
+             && mp->getGrayscale(mp->eR1) < sensorGrayscaleSplittingValue && mp->getGrayscale(mp->eR2) < sensorGrayscaleSplittingValue) {
+      mp->motorControl(mp->eLEFT, mp->eCW, 50);
+      mp->motorControl(mp->eRIGHT, mp->eCW, 200);
     }
   }
 }
 
 // turn left: move the right motor backwards (counter clockwise) and the left motor forward (clockwise)
 void turnLeft() {
-  MaqueenPlus.motorControl(MaqueenPlus.eLEFT, MaqueenPlus.eCCW, 50);
-  MaqueenPlus.motorControl(MaqueenPlus.eRIGHT, MaqueenPlus.eCW, 50);
-
-
+  Serial.println("turning left");
+  mp->motorControl(mp->eLEFT, mp->eCCW, 50);
+  mp->motorControl(mp->eRIGHT, mp->eCW, 50);
 }
 
 // turn right: move the left motor backwards (counter clockwise) and the right motor forward (clockwise)
 void turnRight() {
-  MaqueenPlus.motorControl(MaqueenPlus.eLEFT, MaqueenPlus.eCW, 50);
-  MaqueenPlus.motorControl(MaqueenPlus.eRIGHT, MaqueenPlus.eCCW, 50);
+  Serial.println("turning right");
+  mp->motorControl(mp->eLEFT, mp->eCW, 50);
+  mp->motorControl(mp->eRIGHT, mp->eCCW, 50);
 }
 
 // stop: stop both motors
 void stop() {
-  MaqueenPlus.motorControl(MaqueenPlus.eALL, MaqueenPlus.eCW, 0);
-  MaqueenPlus.motorControl(MaqueenPlus.eALL, MaqueenPlus.eCCW, 0);
+  Serial.println("stopping");
+  mp->motorControl(mp->eALL, mp->eCW, 0);
+  mp->motorControl(mp->eALL, mp->eCCW, 0);
+}
+
+// check current values of all relevant sensors
+void checkAllSensors() {
+  //  Serial.println("L1: " + String(mp->getGrayscale(mp->eL1)));
+  //  Serial.println("L2: " + String(mp->getGrayscale(mp->eL2)));
+  //  Serial.println("L3: " + String(mp->getGrayscale(mp->eL3)));
+  //  Serial.println("R1: " + String(mp->getGrayscale(mp->eR1)));
+  //  Serial.println("R2: " + String(mp->getGrayscale(mp->eR2)));
+  //  Serial.println("R3: " + String(mp->getGrayscale(mp->eR3)));
+  uint8_t distance = mp->ultraSonic(mp->eP12, mp->eP13);
+  ShowString(String(distance), myRGBcolor_zyvx);
+  Serial.println("ultrasonic distance: " + String(distance));
 }
