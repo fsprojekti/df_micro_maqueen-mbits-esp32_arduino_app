@@ -15,5 +15,5 @@ A pocket-sized microcontroller that has lots of features the same as Microbit V2
 
 |endpoint|parameters|description|response|
 |----|----|-----------|------------|
-|/move|startLocation, endLocation|request a move|{status:accept} if request is accepted, {status:reject} if request is not accepted because the car is busy or there are missing parameters in the request
+|/move|source, target, taskId|request a move|{status:accept} if request is accepted, {status:reject} if request is not accepted because the car is busy or there are missing parameters in the request
 

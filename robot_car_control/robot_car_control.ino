@@ -1,23 +1,21 @@
-//#include <Arduino.h>
 #include <FastLED.h>
 #include "Dots5x5font.h"
 #include <WiFi.h>;
-#include <WiFiClient.h>
 #include <WebServer.h>
 #include <ESPmDNS.h>
 #include <DFRobot_MaqueenPlus.h>
 #include <HTTPClient.h>
 
 // **************** global app variables *********************
-int state = 0;
-bool busy = false;
+int state = 0; // default: 0
+bool busy = true; // default: false
 int sensorGrayscaleSplittingValue = 150;
 // start and end location for the robot car moves
 //    these two values are set when the request to move is received via WiFi
 //    NOTE: the request to move is only processed after the previous request (move) is finished --> this is controlled by the outside app
-long sourceLocation = 0;
-long targetLocation = 0;
-long taskId = 0;
+long sourceLocation = 5; // default: 0
+long targetLocation = 1; // default: 0
+long taskId = 1; // default: 0
 
 // production areas locations: 1, 2, 3, 4
 int firstProductionAreaLocation = 1;
@@ -142,6 +140,33 @@ void handleRoot() {
   server.send(200, "text/plain", "Hello from DF micro:Maqueen Plus!");
 }
 
+void handleMove() {
+
+  Serial.println("received an HTTP request to /move");
+
+  // server.send(200, "text/plain", "{status:accept}");
+  if (busy) {
+    server.send(200, "text/plain", "{status:reject}");
+  }
+  else {
+    // check if all parameters are present
+    if (server.arg("source") == "")
+      server.send(200, "text/plain", "{status:reject, missing source location}");
+    else if (server.arg("target") == "")
+      server.send(200, "text/plain", "{status:reject, missing target location}");
+    else if (server.arg("taskId") == "")
+      server.send(200, "text/plain", "{status:reject, missing task id}");
+    else {
+      sourceLocation = server.arg("source").toInt();
+      targetLocation = server.arg("target").toInt();
+      taskId = server.arg("taskId").toInt();
+      // busy = true;
+      Serial.println("source: " + String(sourceLocation) + ", target: " + String(targetLocation) + ", taskId: " + String(taskId));
+      server.send(200, "text/plain", "{status:accept}");
+    }
+  }
+}
+
 void handleNotFound() {
   String message = "File Not Found\n\n";
   message += "URI: ";
@@ -190,48 +215,20 @@ void setup() {
 
   // web server API endpoints
   server.on("/", handleRoot);
-
-  server.on("/move", HTTP_GET, []() {
-
-    Serial.println("received an HTTP request to /move");
-
-    // server.send(200, "text/plain", "{status:accept}");
-    if (busy) {
-      server.send(200, "text/plain", "{status:reject}");
-    }
-    else {
-      // first parameter in the GET message is the source location, the second parameter is the target location of the robot car move,
-      // and the third parameter is the id of the task
-      // Serial.println("received an HTTP request to /move");
-      if (server.arg("source") == "")
-        server.send(200, "text/plain", "{status:reject, missing source location}");
-      else if (server.arg("target") == "")
-        server.send(200, "text/plain", "{status:reject, missing target location}");
-      else if (server.arg("taskId") == "")
-        server.send(200, "text/plain", "{status:reject, missing task id}");
-      else {
-        sourceLocation = server.arg("source").toInt();
-        targetLocation = server.arg("target").toInt();
-        taskId = server.arg("taskId").toInt();
-        // busy = true;
-        Serial.println("source: " + String(sourceLocation) + ", target: " + String(targetLocation) + ", taskId: " + String(taskId));
-        server.send(200, "text/plain", "{status:accept}");
-      }
-    }
-  });
-
+  server.on("/move", handleMove);
   server.onNotFound(handleNotFound);
+
   // start web server
   server.begin();
   Serial.println("HTTP server started");
 
-  // initialize ESP32 board matrix
+  // initialize ESP32 board LED matrix
   FastLED.addLeds<LED_TYPE, LED_PIN, COLOR_ORDER>(leds, NUM_LEDS);
   FastLED.setBrightness(max_bright);
 
   // set MaqueenPlus front lights color
   mp->setRGB(mp->eALL, mp->eBLUE);
-  // enable PID operation control
+  // enable MaqueenPlus PID operation control
   mp->PIDSwitch(mp->eON);
 }
 
@@ -239,20 +236,26 @@ void loop() {
 
   //  Serial.println(mp->getVersion());
   delay(100);
-  //  stop();
+//  stop();
 
   //  checkAllSensors();
 
+  Serial.println("left motor speed:" + String(mp->getSpeed(mp->eLEFT)));
+  Serial.println("right motor speed:" + String(mp->getSpeed(mp->eRIGHT)));
+  
   // handle incoming requests
   server.handleClient();
 
-  //  Serial.println("robot state: " + String(state));
+  Serial.println("robot state: " + String(state));
   // ShowChar function expects a character, while state is an int value
   //  --> adding 48 converts an integer value (0 to 9) to char (decimal values from 48 to 57)
-  // ShowChar(state + 48, myRGBcolor_zyvx);
+  ShowChar(state + 48, myRGBcolor_zyvx);
 
   // car robot driving algorithm
   switch (state) {
+    case 555:
+      stop();
+      break;
     // default case, the car is free (busy = false) and waits for the next request to move
     case 0:
       numOfLeftTurnsToPass = 0;
@@ -301,10 +304,10 @@ void loop() {
     // case 1: the car moves forward following the line
     case 1:
       // if the car detects an object within 10 cm, it stops and waits
-      if (mp->ultraSonic(mp->eP0, mp->eP1) < 10) {
-        stop();
-        break;
-      }
+      //      if (mp->ultraSonic(mp->eP0, mp->eP1) < 10) {
+      //        stop();
+      //        break;
+      //      }
       // there are no obstacles, move forward
       moveForward();
 
@@ -473,15 +476,19 @@ void loop() {
   }
 }
 
+void moveForwardFix() {
+  mp->motorControl(mp->eALL, mp->eCW, 150);
+}
+
 // basic line following
 void moveForward() {
   Serial.println("moving forward");
   // if sensors L1 and R1 detect the line, move straight forward
-  if (mp->getGrayscale(mp->eL2) < sensorGrayscaleSplittingValue &&  mp->getGrayscale(mp->eL1) > sensorGrayscaleSplittingValue
-      && mp->getGrayscale(mp->eR1) > sensorGrayscaleSplittingValue && mp->getGrayscale(mp->eR2) < sensorGrayscaleSplittingValue) {
-    mp->motorControl(mp->eALL, mp->eCW, 50);
-  }
-  else {
+//  if (mp->getGrayscale(mp->eL2) < sensorGrayscaleSplittingValue &&  mp->getGrayscale(mp->eL1) > sensorGrayscaleSplittingValue
+//      && mp->getGrayscale(mp->eR1) > sensorGrayscaleSplittingValue && mp->getGrayscale(mp->eR2) < sensorGrayscaleSplittingValue) {
+    mp->motorControl(mp->eALL, mp->eCW, 150);
+//  }
+//  else {
     // if L1 and L2 do not detect the line, but R1 and R2 do, turn left
     if (mp->getGrayscale(mp->eL2) < sensorGrayscaleSplittingValue &&  mp->getGrayscale(mp->eL1) < sensorGrayscaleSplittingValue
         && mp->getGrayscale(mp->eR1) > sensorGrayscaleSplittingValue && mp->getGrayscale(mp->eR2) > sensorGrayscaleSplittingValue) {
@@ -506,21 +513,21 @@ void moveForward() {
       mp->motorControl(mp->eLEFT, mp->eCW, 50);
       mp->motorControl(mp->eRIGHT, mp->eCW, 200);
     }
-  }
+//  }
 }
 
 // turn left: move the right motor backwards (counter clockwise) and the left motor forward (clockwise)
 void turnLeft() {
   Serial.println("turning left");
-  mp->motorControl(mp->eLEFT, mp->eCCW, 50);
-  mp->motorControl(mp->eRIGHT, mp->eCW, 50);
+  mp->motorControl(mp->eLEFT, mp->eCCW, 100);
+  mp->motorControl(mp->eRIGHT, mp->eCW, 100);
 }
 
 // turn right: move the left motor backwards (counter clockwise) and the right motor forward (clockwise)
 void turnRight() {
   Serial.println("turning right");
-  mp->motorControl(mp->eLEFT, mp->eCW, 50);
-  mp->motorControl(mp->eRIGHT, mp->eCCW, 50);
+  mp->motorControl(mp->eLEFT, mp->eCW, 100);
+  mp->motorControl(mp->eRIGHT, mp->eCCW, 100);
 }
 
 // stop: stop both motors
