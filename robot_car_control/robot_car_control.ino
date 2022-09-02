@@ -132,11 +132,6 @@ void ShowString(String sMessage, CRGB myRGBcolor) {
         }
       }
       FastLED.show();
-      //      if (sft < sensorGrayscaleSplittingValue) {
-      //        FastLED.delay(200);
-      //      } else {
-      //        FastLED.delay(30);
-      //      }
     }
   }
 }
@@ -257,12 +252,6 @@ void setup() {
 void loop() {
 
   // Serial.println(mp->getVersion());
-  // delay(100);
-  // stop();
-  //  checkAllSensors();
-
-  //  Serial.println("left motor speed:" + String(mp->getSpeed(mp->eLEFT)));
-  //  Serial.println("right motor speed:" + String(mp->getSpeed(mp->eRIGHT)));
 
   // handle incoming requests
   server.handleClient();
@@ -284,6 +273,12 @@ void loop() {
     // default case, the car is free (busy = false) and waits for the next request to move
     case 1:
       if (busy) {
+        // if the car detects an object within 5 cm, it stops and waits
+        // TODO: TEST
+        if (MaqueenPlus.ultraSonic(MaqueenPlus.eP1, MaqueenPlus.eP2) < 10) {
+          stop();
+          break;
+        }
         // start the move
         moveForward();
 
