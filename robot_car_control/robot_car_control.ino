@@ -25,11 +25,11 @@ long taskId = 1; // default: 0
 
 // production areas locations: 1, 2, 3, 4
 int firstProductionAreaLocation = 1;
-int lastProductionAreaLocation = 1;
+int lastProductionAreaLocation = 4;
 int mainRoboticArmLocation = 5;
-// parking areas locations: 6, 7
+// parking areas locations: 6, 7, 8, 9
 int firstParkingAreaLocation = 6;
-int lastParkingAreaLocation = 6;
+int lastParkingAreaLocation = 9;
 
 int numOfRightTurnsToPass, numOfLeftTurnsToPass;
 int numOfRightTurns = 0, numOfLeftTurns = 0;
@@ -38,12 +38,12 @@ int numOfRightTurns = 0, numOfLeftTurns = 0;
 //const char* ssid     = "DESKTOP-JL5IS04 3781";
 //const char* password = "TPlaptopHOTSPOT";
 
-const char* ssid     = "DESKTOP-4NT77NL-4917";
-const char* password = "TPlaptopHOTSPOT";
+const char* ssid     = "TP-LINK_0B69";
+const char* password = "29205820";
 
 WebServer server(80);
 
-String controlAppIp = "192.168.137.1";
+String controlAppIp = "192.168.0.100";
 int controlAppPort = 3000;
 
 // create HTTP client
@@ -212,7 +212,7 @@ void handleNotFound() {
 
 void setup() {
   // initialize serial print
-  Serial.begin(9600);
+  Serial.begin(115200);
 
   // connect to a WiFi network
   Serial.print("Connecting to ");
@@ -226,7 +226,10 @@ void setup() {
   Serial.println("");
   Serial.println("WiFi connected.");
   Serial.println("IP address: ");
+ 
   Serial.println(WiFi.localIP());
+  Serial.println("MAC address: ");
+  Serial.println(WiFi.macAddress());
   // start the local server (for incoming requests to the robot car)
   if (MDNS.begin("esp32")) {
     Serial.println("MDNS responder started");
