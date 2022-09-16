@@ -290,12 +290,16 @@ void loop() {
     // default case, the car is free (busy = false) and waits for the next request to move
     case 1: {
         if (busy) {
-          // if the car detects an object within 5 cm, it stops and waits
+          // if the car detects an object within n (=20?) cm, it stops and waits
+          uint8_t ultrasonic1 = mp->ultraSonic(mp->eP32, mp->eP25);
+          uint8_t ultrasonic2 = mp->ultraSonic(mp->eP32, mp->eP25);
+          uint8_t ultrasonic3 = mp->ultraSonic(mp->eP32, mp->eP25);
+          uint8_t ultrasonic_avg = (ultrasonic1 + ultrasonic2 + ultrasonic3) / 3;
           // TODO: TEST
-          //        if (mp-->ultraSonic(mp-->eP1, mp-->eP2) < 10) {
-          //          stop();
-          //          break;
-          //        }
+          if (ultrasonic_avg != 0 && ultrasonic_avg < 20) {
+            stop();
+            break;
+          }
           // start the move
           moveForward();
 
@@ -355,31 +359,31 @@ void loop() {
           // 1. it is moving from a production area (1 to 4) to a parking area (5 to 9)
           // 2. it has passed the "numOfLeftTurnsToPass" turns
           else if ((!L1 || !R1) && !L3 && R3) {
-            //          if ((sourceLocation < targetLocation) && (numOfLeftTurns >= numOfLeftTurnsToPass)) {
-            if (sourceLocation < targetLocation) {
+            if ((sourceLocation < targetLocation) && (numOfLeftTurns > numOfLeftTurnsToPass)) {
+              //            if (sourceLocation < targetLocation) {
               stop();
               state = 3;
               break;
             }
-            //          else {
-            //            numOfLeftTurns++;
-            //            break;
-            //          }
+            else {
+              numOfLeftTurns++;
+              break;
+            }
           }
           //the car detects the location for the right turn at the production area --> the car turns right under two conditions:
           // 1. it is moving from a parking area (5 to 9) to a production area (1 to 4)
           // 2. it has passed the "numOfRightRightTurnsToPass" turns
           else if ((!L1 || !R1) && L3 && !R3) {
-            //          if ((sourceLocation > targetLocation) && (numOfRightTurns >= numOfRightTurnsToPass)) {
-            if (sourceLocation > targetLocation) {
+            if ((sourceLocation > targetLocation) && (numOfRightTurns > numOfRightTurnsToPass)) {
+              //            if (sourceLocation > targetLocation) {
               stop();
               state = 5;
               break;
             }
-            //          else {
-            //            numOfRightTurns++;
-            //            break;
-            //          }
+            else {
+              numOfRightTurns++;
+              break;
+            }
           }
           else if ((!L1 || !R1) && L3 && R3) {
             // no condition met for turning left or right, continue to move forward
@@ -617,7 +621,7 @@ void checkAllSensors() {
   Serial.println("R3: " + String(mp->getPatrol(mp->eR3)));
   //  unsigned long time7 = micros();
 
-  //  uint8_t distance = mp->ultraSonic(mp->eP0, mp->eP1);
+  //  uint8_t distance = mp->ultraSonic(mp->eP32, mp->eP25);
   //  ShowString(String(distance), myRGBcolor_zyvx);
   //  Serial.println("ultrasonic distance: " + String(distance));
 }
