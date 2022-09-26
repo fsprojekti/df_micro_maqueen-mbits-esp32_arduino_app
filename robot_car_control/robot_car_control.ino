@@ -5,6 +5,8 @@
 #include <ESPmDNS.h>
 #include <DFRobot_MaqueenPlus.h>
 #include <HTTPClient.h>
+#include <ArduinoJson.h>
+
 
 // **************** global app variables *********************
 int state = 1; // default: 1
@@ -21,7 +23,7 @@ int turnsMade = 0;
 //    NOTE: the request to move is only processed after the previous request (move) is finished --> this is controlled by the outside app
 long sourceLocation = 0; // default: 0
 long targetLocation = 0; // default: 0
-long taskId = 1; // default: 0
+String taskId = ""; // default: 0
 
 // production areas locations: 1, 2, 3, 4
 int firstProductionAreaLocation = 1;
@@ -41,7 +43,7 @@ int numOfRightTurns = 0, numOfLeftTurns = 0;
 const char* ssid     = "TP-LINK_0B69";
 const char* password = "29205820";
 
-WebServer server(80);
+WebServer server(8000);
 
 String controlAppIp = "192.168.0.100";
 int controlAppPort = 3000;
@@ -156,22 +158,40 @@ void handleMove() {
 
   Serial.println("received an HTTP request to /move");
 
-  // server.send(200, "text/plain", "{status:accept}");
+  StaticJsonDocument<100> JSONdocument;
+
+  // server.send(200, "text/plain", "{\"status\":\"accept\"}");
   if (busy) {
-    server.send(200, "text/plain", "{status:reject}");
+    JSONdocument["status"] = "reject, the car is busy";
+    String message;
+    serializeJson(JSONdocument, message);
+    server.send(200, "text/plain", message);
   }
   else {
+    
     // check if all parameters are present
-    if (server.arg("source") == "")
-      server.send(200, "text/plain", "{status:reject, missing source location}");
-    else if (server.arg("target") == "")
-      server.send(200, "text/plain", "{status:reject, missing target location}");
-    else if (server.arg("taskId") == "")
-      server.send(200, "text/plain", "{status:reject, missing task id}");
+    if (server.arg(0) == "") {
+      JSONdocument["status"] = "reject, missing source location";
+      String message;
+      serializeJson(JSONdocument, message);
+      server.send(200, "text/plain", message);
+    }
+    else if (server.arg(1) == "") {
+      JSONdocument["status"] = "reject, missing target location";
+      String message;
+      serializeJson(JSONdocument, message);
+      server.send(200, "text/plain", message);
+    }
+    else if (server.arg(2) == "") {
+      JSONdocument["status"] = "reject, missing task id";
+      String message;
+      serializeJson(JSONdocument, message);
+      server.send(200, "text/plain", message);
+    }
     else {
-      sourceLocation = server.arg("source").toInt();
-      targetLocation = server.arg("target").toInt();
-      taskId = server.arg("taskId").toInt();
+      sourceLocation = server.arg(0).toInt();
+      targetLocation = server.arg(1).toInt();
+      taskId = server.arg(2);
       busy = true;
       startFlag = true;
       // if the target is one of the robotic arms (warehouse or production)
@@ -190,7 +210,11 @@ void handleMove() {
       turnsMade = 0;
 
       Serial.println("source: " + String(sourceLocation) + ", target: " + String(targetLocation) + ", taskId: " + String(taskId));
-      server.send(200, "text/plain", "{status:accept}");
+
+      JSONdocument["status"] = "accept";
+      String message;
+      serializeJson(JSONdocument, message);
+      server.send(200, "text/plain", message);
     }
   }
 }
@@ -226,7 +250,7 @@ void setup() {
   Serial.println("");
   Serial.println("WiFi connected.");
   Serial.println("IP address: ");
- 
+
   Serial.println(WiFi.localIP());
   Serial.println("MAC address: ");
   Serial.println(WiFi.macAddress());
@@ -484,31 +508,31 @@ void moveForward() {
 
   // 1001
   if (L2 && !L1 && !R1 && R2) {
-    mp->motorControl(mp->eALL, mp->eCW, 45);
+    mp->motorControl(mp->eALL, mp->eCW, 50);
     //    Serial.println("A");
   }
   // 1101
   else if (L2 && L1 && !R1 && R2) {
-    mp->motorControl(mp->eLEFT, mp->eCW, 45);
+    mp->motorControl(mp->eLEFT, mp->eCW, 50);
     mp->motorControl(mp->eRIGHT, mp->eCW, 37);
     //    Serial.println("B");
   }
   // 1100
   else if (L2 && L1 && !R1 && !R2) {
-    mp->motorControl(mp->eLEFT, mp->eCW, 45);
+    mp->motorControl(mp->eLEFT, mp->eCW, 50);
     mp->motorControl(mp->eRIGHT, mp->eCW, 0);
     //    Serial.println("C");
   }
   // 1110
   else if (L2 && L1 && R1 && !R2) {
-    mp->motorControl(mp->eLEFT, mp->eCW, 45);
+    mp->motorControl(mp->eLEFT, mp->eCW, 50);
     mp->motorControl(mp->eRIGHT, mp->eCCW, 20);
     //    Serial.println("D");
   }
   // 1011
   else if (L2 && !L1 && R1 && R2) {
     mp->motorControl(mp->eLEFT, mp->eCW, 37);
-    mp->motorControl(mp->eRIGHT, mp->eCW, 45);
+    mp->motorControl(mp->eRIGHT, mp->eCW, 50);
     //    Serial.println("E");
   }
   // 0011
@@ -521,7 +545,7 @@ void moveForward() {
   // 0111
   else if (!L2 && L1 && R1 && R2) {
     mp->motorControl(mp->eLEFT, mp->eCCW, 20);
-    mp->motorControl(mp->eRIGHT, mp->eCW, 45);
+    mp->motorControl(mp->eRIGHT, mp->eCW, 50);
     //    Serial.println("G");
   }
   // 1111
@@ -533,7 +557,7 @@ void moveForward() {
   // if the flag is true (during the first iteration of the loop function after busy is set to true, wait for 500 ms
   // this is to ensure that the car moves from the original position (current parking or production area)
   if (startFlag) {
-    delay(500);
+    delay(1000);
     startFlag = false;
     // read the sensor values again otherwise the car will stop
     L1 = mp->getPatrol(mp->eL1);
