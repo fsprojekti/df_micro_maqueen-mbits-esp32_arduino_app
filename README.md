@@ -17,3 +17,16 @@ A pocket-sized microcontroller that has lots of features the same as Microbit V2
 |----|----|-----------|------------|
 |/move|source, target, taskId|request a move|{status:accept} if request is accepted, {status:reject} if request is not accepted because the car is busy or there are missing parameters in the request
 
+## State of the application after 2022 Summer School on IIoT and blockchain
+* basic functions (line following, decisions at cross-roads): tests in local environment (TP) worked OK, but during the SS2022 the cars had problems manouvering on the grid (track)
+	* **TODO**:
+		* check and test line following sensors
+		* check and test two motors, motor rotations, wheels etc.
+		* check and test ultrasound sensors
+		* improve line following algorithm: sensors in a pyramid formation, similar to robots from Rok Vrabič
+* **decisions on selecting the right manufacturing unit to go to and the right parking area to go to need to be tested more extensively**
+* webserver and HTTP client work OK
+	* for response data in JSON format ArduinoJson library is used: data constructed as a JSONdocument type and serialized using serializeJson function
+	* taskId is now in String format instead of int
+* MBits I2C communication work OK
+* 5x5 LED matrix work OK
