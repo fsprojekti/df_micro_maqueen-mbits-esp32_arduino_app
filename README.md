@@ -26,7 +26,7 @@ A pocket-sized microcontroller that has lots of features the same as Microbit V2
 		* improve line following algorithm: sensors in a pyramid formation, similar to robots from Rok Vrabič
 * **decisions on selecting the right manufacturing unit to go to and the right parking area to go to need to be tested more extensively**
 * webserver and HTTP client work OK
-	* for response data in JSON format ArduinoJson library is used: data constructed as a JSONdocument type and serialized using serializeJson function
+	* for response data in JSON format **ArduinoJson** library is used: data constructed as a JSONdocument type and serialized using serializeJson function
 	* taskId is now in String format instead of int
-* MBits I2C communication work OK
-* 5x5 LED matrix work OK
+* MBits I2C communication works OK
+* 5x5 LED matrix works OK
