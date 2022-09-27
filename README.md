@@ -21,12 +21,12 @@ A pocket-sized microcontroller that has lots of features the same as Microbit V2
 * basic functions (line following, decisions at cross-roads): tests in local environment (TP) worked OK, but during the SS2022 the cars had problems manouvering on the grid (track)
 	* **TODO**:
 		* check and test line following sensors
-		* check and test two motors, motor rotations, wheels etc.
+		* check and test both motors, motor rotations, wheels etc.
 		* check and test ultrasound sensors
 		* improve line following algorithm: sensors in a pyramid formation, similar to robots from Rok Vrabič
 * **decisions on selecting the right manufacturing unit to go to and the right parking area to go to need to be tested more extensively**
 * webserver and HTTP client work OK
-	* for response data in JSON format **ArduinoJson** library is used: data constructed as a JSONdocument type and serialized using serializeJson function
+	* to construct response data in JSON format **ArduinoJson** library is used: data is constructed as a JSONdocument type and serialized using serializeJson function
 	* taskId is now in String format instead of int
 * MBits I2C communication works OK
 * 5x5 LED matrix works OK
