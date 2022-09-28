@@ -28,5 +28,12 @@ A pocket-sized microcontroller that has lots of features the same as Microbit V2
 * webserver and HTTP client work OK
 	* to construct response data in JSON format **ArduinoJson** library is used: data is constructed as a JSONdocument type and serialized using serializeJson function
 	* taskId is now in String format instead of int
+* ultrasonic distance measurement:
+	* delayMicroseconds(5) added to the ultrasonic function in DFRobot_Maqueenplus.cpp file
+	* two extra ePin values added to the DFRobot_Maqueenplus.h file:
+		* eP25 = 25,
+		* eP32 = 32,
+	* to call the ultrasonic function in the main Arduino file use:
+		* uint8_t distance = mp->ultraSonic(mp->eP32,mp->eP25);
 * MBits I2C communication works OK
 * 5x5 LED matrix works OK
