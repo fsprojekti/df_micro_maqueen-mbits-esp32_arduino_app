@@ -113,7 +113,7 @@ void ShowString(String sMessage, CRGB myRGBcolor) {
       for (int x = 0; x < NUM_COLUMNS; x++) {
         for (int y = 0; y < NUM_ROWS; y++) {
           int stripIdx = mapLED[y * NUM_COLUMNS  + x];
-          if (x + sft < NUM_COLUMNS) {
+          if (x + sft < 2 * NUM_COLUMNS) {
             leds[stripIdx] = matrixBackColor[x + sft][y];
           } else {
             leds[stripIdx] = CRGB(0, 0, 0);
@@ -202,15 +202,29 @@ void handleNotFound() {
 void setupWiFi() {
   Serial.print("Connecting to ");
   Serial.println(ssid);
-  WiFi.begin(ssid, password);  // Begin WiFi connection
 
-  // Wait for connection
+  // Maximum number of attempts to connect to WiFi
+  const int maxRetries = 20;
+  int retryCount = 0;  // Counter for retries
+
+  // Start WiFi connection
+  WiFi.begin(ssid, password);
+
+  // Wait for connection with a timeout and retry mechanism
   while (WiFi.status() != WL_CONNECTED) {
     delay(500);
     Serial.print(".");  // Indicate connection attempt
+    retryCount++;
+
+    if (retryCount > maxRetries) {  // If max retries reached, break the loop
+      Serial.println("Failed to connect to WiFi after multiple attempts.");
+      // Handle failure (e.g., restart ESP or go into a low-power mode)
+      ESP.restart();  // Restart the ESP32 (optional, depending on desired behavior)
+      return;  // Exit the function
+    }
   }
 
-  // Print the IP and MAC addresses once connected
+  // Connected to WiFi
   Serial.println("");
   Serial.println("WiFi connected.");
   Serial.println("IP address: ");
@@ -222,7 +236,15 @@ void setupWiFi() {
   if (MDNS.begin("esp32")) {  // Set mDNS hostname
     Serial.println("MDNS responder started");
   } else {
-    Serial.println("Error starting MDNS responder");
+    Serial.println("Error starting MDNS responder. Retrying...");
+    // Retry mDNS setup if it fails
+    for (int i = 0; i < 3; i++) {  // Retry 3 times
+      if (MDNS.begin("esp32")) {
+        Serial.println("MDNS responder started after retry.");
+        break;
+      }
+      delay(1000);  // Wait 1 second before retrying
+    }
   }
 }
 
@@ -252,8 +274,6 @@ void setupLEDMatrix() {
   FastLED.addLeds<LED_TYPE, LED_PIN, COLOR_ORDER>(leds, NUM_LEDS);  // Add LED strip
   FastLED.setBrightness(max_bright);  // Set maximum brightness
 }
-
-
 
 void setup() {
   // initialize serial print
@@ -303,15 +323,15 @@ void loop() {
     case 1: {
         if (busy) {
           // if the car detects an object within n (=20?) cm, it stops and waits
-          uint8_t ultrasonic1 = mp->ultraSonic(mp->eP32, mp->eP25);
-          uint8_t ultrasonic2 = mp->ultraSonic(mp->eP32, mp->eP25);
-          uint8_t ultrasonic3 = mp->ultraSonic(mp->eP32, mp->eP25);
-          uint8_t ultrasonic_avg = (ultrasonic1 + ultrasonic2 + ultrasonic3) / 3;
+          // uint8_t ultrasonic1 = mp->ultraSonic(mp->eP32, mp->eP25);
+          // uint8_t ultrasonic2 = mp->ultraSonic(mp->eP32, mp->eP25);
+          // uint8_t ultrasonic3 = mp->ultraSonic(mp->eP32, mp->eP25);
+          // uint8_t ultrasonic_avg = (ultrasonic1 + ultrasonic2 + ultrasonic3) / 3;
           // TODO: TEST
-          if (ultrasonic_avg != 0 && ultrasonic_avg < 20) {
-            stop();
-            break;
-          }
+          //if (ultrasonic_avg != 0 && ultrasonic_avg < 20) {
+          //  stop();
+          //  break;
+          //}
           // start the move
           moveForward();
 
@@ -341,29 +361,41 @@ void loop() {
         busy = false;
         state = 1;
 
-        // call Node.js control app
-        // OR the student app??? should I read the IP and port from the request?
-        //      set server host and path
+        // Call Node.js control app
         String httpURL = controlAppIp + String(controlAppPort) + "/report?taskId=" + String(taskId) + "&state=done";
-        Serial.println("http url: " + httpURL);
-        // TODO: change the API endpoint
-        http.begin(controlAppIp, controlAppPort, "/report?taskId=" + String(taskId) + "&state=done"); //HTTP
-        // start the connection and send HTTP header
-        int httpCode = http.GET();
+        Serial.println("HTTP URL: " + httpURL);
 
-        // httpCode will be negative on error
-        if (httpCode > 0) {
-          // HTTP header has been send and Server response header has been handled
-          Serial.println("HTTP response code: " + httpCode);
-          Serial.println("HTTP response: " + http.getString());
+        // Number of retry attempts for HTTP GET
+        const int maxHttpRetries = 5;
+        int httpRetryCount = 0;
+        bool httpSuccess = false;
 
-          // set state (busy) to false and return to the default case to wait for a new request
+        while (httpRetryCount < maxHttpRetries) {
+          http.begin(controlAppIp, controlAppPort, "/report?taskId=" + String(taskId) + "&state=done"); //HTTP
+          int httpCode = http.GET();  // Start the connection and send HTTP header
+
+          if (httpCode > 0) {  // HTTP response code > 0 means success
+            Serial.println("HTTP response code: " + String(httpCode));
+            Serial.println("HTTP response: " + http.getString());
+            httpSuccess = true;  // Set success flag
+            break;  // Exit retry loop on success
+          } else {
+            Serial.println("HTTP GET failed, response code: " + String(httpCode));
+            Serial.println(String("HTTP GET error: ") + http.errorToString(httpCode).c_str());
+            httpRetryCount++;
+            delay(2000);  // Wait 2 seconds before retrying
+          }
+        }
+        http.end();  // Close HTTP connection after each attempt
+
+        // Check if HTTP request was successful
+        if (!httpSuccess) {
+          Serial.println("Failed to communicate with Node.js control app after retries.");
+          // Handle the failure, possibly restart or change state
+        } else {
+          // Reset the busy state and prepare for the next request
           busy = false;
           state = 1;
-        }
-        // error sending HTTP request to the Node.js control app, retry
-        else {
-          Serial.println("HTTP GET failed, response code: " + String(httpCode) + ", error: " + http.errorToString(httpCode).c_str());
         }
         break;
       }
