@@ -6,6 +6,8 @@
 #include <DFRobot_MaqueenPlus.h>
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
+// Include the config file
+#include "config.h"
 
 
 // **************** global app variables *********************
@@ -19,9 +21,6 @@ bool startFlag = false;
 String taskId = ""; // default: 0
 
 // **************** WiFi parameters *********************
-const char* ssid     = "NSSM";
-const char* password = "NSSM1234";
-
 WebServer server(8000);
 
 // create HTTP client
@@ -78,7 +77,7 @@ void plotMatrixChar(CRGB (*matrix)[5], CRGB myRGBcolor, int x, char character, i
         fontLine = fontLine << 1;
         int xpos = x + bitCount;
         int ypos = y + i;
-        if (xpos < 0 || xpos > 10 || ypos < 0 || ypos > 5) continue;
+        if (xpos < 0 || xpos > 2 * NUM_COLUMNS || ypos < 0 || ypos > NUM_ROWS) continue;
         else {
           matrix[xpos][ypos] = pixelColour;
         }
@@ -88,7 +87,7 @@ void plotMatrixChar(CRGB (*matrix)[5], CRGB myRGBcolor, int x, char character, i
 }
 
 void ShowChar(char myChar, CRGB myRGBcolor) {
-  CRGB matrixBackColor[2*NUM_COLUMNS][NUM_ROWS];
+  CRGB matrixBackColor[2 * NUM_COLUMNS][NUM_ROWS];
   int mapLED[] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24};
   plotMatrixChar(matrixBackColor, myRGBcolor, 0 , myChar, NUM_COLUMNS, NUM_ROWS);
   for (int x = 0; x < NUM_COLUMNS; x++) {
@@ -103,7 +102,7 @@ void ShowChar(char myChar, CRGB myRGBcolor) {
 }
 
 void ShowString(String sMessage, CRGB myRGBcolor) {
-  CRGB matrixBackColor[2*NUM_COLUMNS][NUM_ROWS];
+  CRGB matrixBackColor[2 * NUM_COLUMNS][NUM_ROWS];
   int mapLED[] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24};
   int messageLength = sMessage.length();
   Serial.println("string length:" + String(messageLength));
@@ -113,7 +112,7 @@ void ShowString(String sMessage, CRGB myRGBcolor) {
     for (int sft = 0; sft <= NUM_COLUMNS; sft++) {
       for (int x = 0; x < NUM_COLUMNS; x++) {
         for (int y = 0; y < NUM_ROWS; y++) {
-          int stripIdx = mapLED[y * 5 + x];
+          int stripIdx = mapLED[y * NUM_COLUMNS  + x];
           if (x + sft < NUM_COLUMNS) {
             leds[stripIdx] = matrixBackColor[x + sft][y];
           } else {
@@ -169,7 +168,7 @@ void handleMove() {
       server.send(200, "text/plain", message);
     }
     else {
-      
+
       taskId = server.arg(0);
       busy = true;
       startFlag = true;
@@ -200,19 +199,18 @@ void handleNotFound() {
   server.send(404, "text/plain", message);
 }
 
-void setup() {
-  // initialize serial print
-  Serial.begin(115200);
-
-  // connect to a WiFi network
+void setupWiFi() {
   Serial.print("Connecting to ");
   Serial.println(ssid);
-  WiFi.begin(ssid, password);
-  Serial.println("");
+  WiFi.begin(ssid, password);  // Begin WiFi connection
+
+  // Wait for connection
   while (WiFi.status() != WL_CONNECTED) {
     delay(500);
-    Serial.print(".");
+    Serial.print(".");  // Indicate connection attempt
   }
+
+  // Print the IP and MAC addresses once connected
   Serial.println("");
   Serial.println("WiFi connected.");
   Serial.println("IP address: ");
@@ -220,37 +218,63 @@ void setup() {
   Serial.println("MAC address: ");
   Serial.println(WiFi.macAddress());
 
-  // start the local server (for incoming requests to the robot car)
-  if (MDNS.begin("esp32")) {
+  // Set up mDNS responder
+  if (MDNS.begin("esp32")) {  // Set mDNS hostname
     Serial.println("MDNS responder started");
+  } else {
+    Serial.println("Error starting MDNS responder");
   }
+}
 
+void setupI2C() {
   Serial.println("define I2C pins");
-  i2cCustomPins.begin(I2C_SDA, I2C_SCL, 100000);
+  i2cCustomPins.begin(I2C_SDA, I2C_SCL, 100000);  // Initialize I2C with custom pins
 
   Serial.println("construct MaqueenPlus object");
-  mp = new DFRobot_MaqueenPlus(&i2cCustomPins, 0x10);
+  mp = new DFRobot_MaqueenPlus(&i2cCustomPins, 0x10);  // Create MaqueenPlus object with I2C address
 
   Serial.println("initialize MaqueenPlus I2C communication");
-  mp->begin();
+  mp->begin();  // Initialize I2C communication with the MaqueenPlus
+}
 
-  // web server API endpoints
-  server.on("/", handleRoot);
-  server.on("/move", handleMove);
-  server.onNotFound(handleNotFound);
+void setupWebServer() {
+  // Define web server API endpoints
+  server.on("/", handleRoot);  // Route for root
+  server.on("/move", handleMove);  // Route for move command
+  server.onNotFound(handleNotFound);  // Route for 404 errors
 
-  // start web server
+  // Start the web server
   server.begin();
   Serial.println("HTTP server started");
+}
 
-  // initialize ESP32 board LED matrix
-  FastLED.addLeds<LED_TYPE, LED_PIN, COLOR_ORDER>(leds, NUM_LEDS);
-  FastLED.setBrightness(max_bright);
+void setupLEDMatrix() {
+  FastLED.addLeds<LED_TYPE, LED_PIN, COLOR_ORDER>(leds, NUM_LEDS);  // Add LED strip
+  FastLED.setBrightness(max_bright);  // Set maximum brightness
+}
 
-  // set MaqueenPlus front lights color
+
+
+void setup() {
+  // initialize serial print
+  Serial.begin(115200);
+
+  // Step 1: Set up WiFi connection
+  setupWiFi();
+
+  // Step 2: Initialize I2C communication
+  setupI2C();
+
+  // Step 3: Set up the web server
+  setupWebServer();
+
+  // Step 4: Initialize the LED matrix
+  setupLEDMatrix();
+
+  // Additional initialization for the MaqueenPlus robot car
   mp->setRGB(mp->eALL, mp->eBLUE);
   // enable MaqueenPlus PID operation control
-  mp->PIDSwitch(mp->eOFF);
+  mp->PIDSwitch(mp->eON);
 }
 
 void loop() {
@@ -317,14 +341,13 @@ void loop() {
         busy = false;
         state = 1;
 
-        // call Node.js control app 
+        // call Node.js control app
         // OR the student app??? should I read the IP and port from the request?
         //      set server host and path
         String httpURL = controlAppIp + String(controlAppPort) + "/report?taskId=" + String(taskId) + "&state=done";
         Serial.println("http url: " + httpURL);
         // TODO: change the API endpoint
         http.begin(controlAppIp, controlAppPort, "/report?taskId=" + String(taskId) + "&state=done"); //HTTP
-        //      http.begin("192.168.137.1", , controlAppPort, "/report?taskId=" + String(taskId) + "&state=done"); //HTTP
         // start the connection and send HTTP header
         int httpCode = http.GET();
 
@@ -340,42 +363,47 @@ void loop() {
         }
         // error sending HTTP request to the Node.js control app, retry
         else {
-          Serial.println("HTTP response code: " + String(httpCode));
-          Serial.println("HTTP GET failed, error:");
-          Serial.println(http.errorToString(httpCode).c_str());
+          Serial.println("HTTP GET failed, response code: " + String(httpCode) + ", error: " + http.errorToString(httpCode).c_str());
         }
         break;
       }
   }
 }
 
-// basic forward move
+// Function to move the robot car forward
+// This function sets both motors to move forward (clockwise) at a given speed.
 void moveForward() {
   Serial.println("moving forward");
   mp->motorControl(mp->eALL, mp->eCW, 50);
 }
 
-// basic backward move
+// Function to move the robot car backward
+// This function sets both motors to move backward (counterclockwise) at a given speed.
 void moveBackward() {
   Serial.println("moving backward");
   mp->motorControl(mp->eALL, mp->eCCW, 50);
 }
 
-// turn left: move the right motor backwards (counter clockwise) and the left motor forward (clockwise)
+// Function to turn the robot car to the left
+// This function sets the left motor to move backward (counterclockwise)
+// and the right motor to move forward (clockwise) to achieve a left turn.
 void turnLeft() {
   Serial.println("turning left");
   mp->motorControl(mp->eLEFT, mp->eCCW, 45);
   mp->motorControl(mp->eRIGHT, mp->eCW, 45);
 }
 
-// turn right: move the left motor backwards (counter clockwise) and the right motor forward (clockwise)
+// Function to turn the robot car to the right
+// This function sets the right motor to move backward (counterclockwise)
+// and the left motor to move forward (clockwise) to achieve a right turn.
 void turnRight() {
   Serial.println("turning right");
   mp->motorControl(mp->eLEFT, mp->eCW, 45);
   mp->motorControl(mp->eRIGHT, mp->eCCW, 45);
 }
 
-// stop: stop both motors
+// Function to stop both motors of the robot car
+// This function stops all movement by setting both motors to 0 speed.
 void stop() {
   // Serial.println("stopping");
   mp->motorControl(mp->eALL, mp->eCW, 0);
