@@ -18,6 +18,7 @@ int L1, L2, L3, R1, R2, R3;
 // this flag is set to true in the first iteration of the loop after busy variable is set to true and set to false immediately after that
 bool startFlag = false;
 
+String dir = ""; // default: forward
 String taskId = ""; // default: 0
 
 // **************** WiFi parameters *********************
@@ -139,43 +140,33 @@ void handleMove() {
 
   StaticJsonDocument<100> JSONdocument;
 
-  // server.send(200, "text/plain", "{\"status\":\"accept\"}");
-  if (busy) {
-    JSONdocument["status"] = "reject, the car is busy";
+  // check if all parameters are present
+  if (server.arg(0) == "") {
+    JSONdocument["status"] = "reject, missing dir location";
+    String message;
+    serializeJson(JSONdocument, message);
+    server.send(200, "text/plain", message);
+  }
+  else if (server.arg(1) == "") {
+    JSONdocument["status"] = "reject, missing task id";
     String message;
     serializeJson(JSONdocument, message);
     server.send(200, "text/plain", message);
   }
   else {
 
-    // check if all parameters are present
-    if (server.arg(0) == "") {
-      JSONdocument["status"] = "reject, missing source location";
-      String message;
-      serializeJson(JSONdocument, message);
-      server.send(200, "text/plain", message);
-    }
-    else if (server.arg(1) == "") {
-      JSONdocument["status"] = "reject, missing target location";
-      String message;
-      serializeJson(JSONdocument, message);
-      server.send(200, "text/plain", message);
-    }
-    else if (server.arg(2) == "") {
-      JSONdocument["status"] = "reject, missing task id";
+    dir = server.arg(0);
+    taskId = server.arg(1);
+
+    Serial.println("received a task to move, direction: " + dir + ", task id: " + String(taskId));
+
+    if (dir != "forward" && dir != "backward" && dir != "left" && dir != "right" && dir != "stop") {
+      JSONdocument["status"] = "reject, invalid direction";
       String message;
       serializeJson(JSONdocument, message);
       server.send(200, "text/plain", message);
     }
     else {
-
-      taskId = server.arg(0);
-      busy = true;
-      startFlag = true;
-
-      // TODO: change the output of the prinltn function
-      Serial.println("");
-
       JSONdocument["status"] = "accept";
       String message;
       serializeJson(JSONdocument, message);
@@ -317,89 +308,26 @@ void loop() {
   R2 = mp->getPatrol(mp->eR2);
   R3 = mp->getPatrol(mp->eR3);
 
-  // car robot driving algorithm
-  switch (state) {
-    // default case, the car is free (busy = false) and waits for the next request to move
-    case 1: {
-        if (busy) {
-          // if the car detects an object within n (=20?) cm, it stops and waits
-          // uint8_t ultrasonic1 = mp->ultraSonic(mp->eP32, mp->eP25);
-          // uint8_t ultrasonic2 = mp->ultraSonic(mp->eP32, mp->eP25);
-          // uint8_t ultrasonic3 = mp->ultraSonic(mp->eP32, mp->eP25);
-          // uint8_t ultrasonic_avg = (ultrasonic1 + ultrasonic2 + ultrasonic3) / 3;
-          // TODO: TEST
-          //if (ultrasonic_avg != 0 && ultrasonic_avg < 20) {
-          //  stop();
-          //  break;
-          //}
-          // start the move
-          moveForward();
-
-        }
-        else {
-          Serial.println("no request to move received");
-        }
-        break;
-      }
-    // case 2: move backward
-    case 2: {
-        moveBackward();
-        break;
-      }
-    // case 3: turn the car left
-    case 3: {
-        turnLeft();
-        break;
-      }
-    // case 4: turn the car right
-    case 4: {
-        turnRight();
-        break;
-      }
-    // case 6: the car is at the end location --> send http message to Node.js control app and switch to state 1
-    case 6: {
-        busy = false;
-        state = 1;
-
-        // Call Node.js control app
-        String httpURL = controlAppIp + String(controlAppPort) + "/report?taskId=" + String(taskId) + "&state=done";
-        Serial.println("HTTP URL: " + httpURL);
-
-        // Number of retry attempts for HTTP GET
-        const int maxHttpRetries = 5;
-        int httpRetryCount = 0;
-        bool httpSuccess = false;
-
-        while (httpRetryCount < maxHttpRetries) {
-          http.begin(controlAppIp, controlAppPort, "/report?taskId=" + String(taskId) + "&state=done"); //HTTP
-          int httpCode = http.GET();  // Start the connection and send HTTP header
-
-          if (httpCode > 0) {  // HTTP response code > 0 means success
-            Serial.println("HTTP response code: " + String(httpCode));
-            Serial.println("HTTP response: " + http.getString());
-            httpSuccess = true;  // Set success flag
-            break;  // Exit retry loop on success
-          } else {
-            Serial.println("HTTP GET failed, response code: " + String(httpCode));
-            Serial.println(String("HTTP GET error: ") + http.errorToString(httpCode).c_str());
-            httpRetryCount++;
-            delay(2000);  // Wait 2 seconds before retrying
-          }
-        }
-        http.end();  // Close HTTP connection after each attempt
-
-        // Check if HTTP request was successful
-        if (!httpSuccess) {
-          Serial.println("Failed to communicate with Node.js control app after retries.");
-          // Handle the failure, possibly restart or change state
-        } else {
-          // Reset the busy state and prepare for the next request
-          busy = false;
-          state = 1;
-        }
-        break;
-      }
+  if (dir == "forward") {
+    stop();
+    moveForward();
   }
+  else if (dir == "backward") {
+    stop();
+    moveBackward();
+  }
+  else if (dir == "left") {
+    stop();
+    turnLeft();
+  }
+  else if (dir == "right") {
+    stop();
+    turnRight();
+  }
+  else if (dir == "stop") {
+    stop();
+  }
+
 }
 
 // Function to move the robot car forward
