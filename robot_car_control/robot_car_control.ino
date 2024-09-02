@@ -40,12 +40,12 @@ int numOfRightTurns = 0, numOfLeftTurns = 0;
 //const char* ssid     = "DESKTOP-JL5IS04 3781";
 //const char* password = "TPlaptopHOTSPOT";
 
-const char* ssid     = "TP-LINK_0B69";
-const char* password = "29205820";
+const char* ssid     = "NSSM";
+const char* password = "NSSM1234";
 
-WebServer server(8000);
+WebServer server(8000); 
 
-String controlAppIp = "192.168.0.100";
+String controlAppIp = "192.168.137.1";
 int controlAppPort = 3000;
 
 // create HTTP client
