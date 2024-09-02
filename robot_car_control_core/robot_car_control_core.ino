@@ -1,6 +1,6 @@
 #include <FastLED.h>
 #include "Dots5x5font.h"
-#include <WiFi.h>;
+#include <WiFi.h>
 #include <WebServer.h>
 #include <ESPmDNS.h>
 #include <DFRobot_MaqueenPlus.h>
@@ -22,10 +22,14 @@ String taskId = ""; // default: 0
 const char* ssid     = "NSSM";
 const char* password = "NSSM1234";
 
-WebServer server(8000); 
+WebServer server(8000);
 
 // create HTTP client
 HTTPClient http;
+
+// student laptop IP and port
+String controlAppIp = "192.168.137.1";
+int controlAppPort = 3000;
 
 // **************** Mbits I2C settings *********************
 // define I2C data and clock pins used on Mbits ESP32 board
@@ -74,7 +78,7 @@ void plotMatrixChar(CRGB (*matrix)[5], CRGB myRGBcolor, int x, char character, i
         fontLine = fontLine << 1;
         int xpos = x + bitCount;
         int ypos = y + i;
-        if (xpos < 0 || xpos > 10 || ypos < 0 || ypos > 5);
+        if (xpos < 0 || xpos > 10 || ypos < 0 || ypos > 5) continue;
         else {
           matrix[xpos][ypos] = pixelColour;
         }
@@ -84,9 +88,9 @@ void plotMatrixChar(CRGB (*matrix)[5], CRGB myRGBcolor, int x, char character, i
 }
 
 void ShowChar(char myChar, CRGB myRGBcolor) {
-  CRGB matrixBackColor[10][5];
+  CRGB matrixBackColor[2*NUM_COLUMNS][NUM_ROWS];
   int mapLED[] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24};
-  plotMatrixChar(matrixBackColor, myRGBcolor, 0 , myChar, 5, 5);
+  plotMatrixChar(matrixBackColor, myRGBcolor, 0 , myChar, NUM_COLUMNS, NUM_ROWS);
   for (int x = 0; x < NUM_COLUMNS; x++) {
     for (int y = 0; y < NUM_ROWS; y++) {
       int stripIdx = mapLED[y * NUM_COLUMNS + x];
@@ -99,18 +103,18 @@ void ShowChar(char myChar, CRGB myRGBcolor) {
 }
 
 void ShowString(String sMessage, CRGB myRGBcolor) {
-  CRGB matrixBackColor[10][5];
+  CRGB matrixBackColor[2*NUM_COLUMNS][NUM_ROWS];
   int mapLED[] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24};
   int messageLength = sMessage.length();
   Serial.println("string length:" + String(messageLength));
   for (int x = 0; x < messageLength; x++) {
     char myChar = sMessage[x];
-    plotMatrixChar(matrixBackColor, myRGBcolor, 0, myChar, 5, 5);
-    for (int sft = 0; sft <= 5; sft++) {
+    plotMatrixChar(matrixBackColor, myRGBcolor, 0, myChar, NUM_COLUMNS, NUM_ROWS);
+    for (int sft = 0; sft <= NUM_COLUMNS; sft++) {
       for (int x = 0; x < NUM_COLUMNS; x++) {
-        for (int y = 0; y < 5; y++) {
+        for (int y = 0; y < NUM_ROWS; y++) {
           int stripIdx = mapLED[y * 5 + x];
-          if (x + sft < 5) {
+          if (x + sft < NUM_COLUMNS) {
             leds[stripIdx] = matrixBackColor[x + sft][y];
           } else {
             leds[stripIdx] = CRGB(0, 0, 0);
@@ -127,7 +131,7 @@ void ShowString(String sMessage, CRGB myRGBcolor) {
 void handleRoot() {
 
   Serial.println("received a request to /");
-  server.send(200, "text/plain", "Hello from DF micro:Maqueen Plus!");
+  server.send(200, "text/plain", "Hello from DF micro:Maqueen Plus v2!");
 }
 
 void handleMove() {
@@ -144,7 +148,7 @@ void handleMove() {
     server.send(200, "text/plain", message);
   }
   else {
-    
+
     // check if all parameters are present
     if (server.arg(0) == "") {
       JSONdocument["status"] = "reject, missing source location";
@@ -165,27 +169,13 @@ void handleMove() {
       server.send(200, "text/plain", message);
     }
     else {
-      sourceLocation = server.arg(0).toInt();
-      targetLocation = server.arg(1).toInt();
-      taskId = server.arg(2);
+      
+      taskId = server.arg(0);
       busy = true;
       startFlag = true;
-      // if the target is one of the robotic arms (warehouse or production)
-      if (targetLocation <= mainRoboticArmLocation) {
-        numOfRightTurnsToPass = getRightTurnsToPass();
-        numOfLeftTurnsToPass = 0;
-      }
-      // if the target is a parking area
-      else {
-        numOfLeftTurnsToPass = getLeftTurnsToPass();
-        numOfRightTurnsToPass = 0;
-      }
-      numOfLeftTurns = 0;
-      numOfRightTurns = 0;
 
-      turnsMade = 0;
-
-      Serial.println("source: " + String(sourceLocation) + ", target: " + String(targetLocation) + ", taskId: " + String(taskId));
+      // TODO: change the output of the prinltn function
+      Serial.println("");
 
       JSONdocument["status"] = "accept";
       String message;
@@ -226,10 +216,10 @@ void setup() {
   Serial.println("");
   Serial.println("WiFi connected.");
   Serial.println("IP address: ");
-
   Serial.println(WiFi.localIP());
   Serial.println("MAC address: ");
   Serial.println(WiFi.macAddress());
+
   // start the local server (for incoming requests to the robot car)
   if (MDNS.begin("esp32")) {
     Serial.println("MDNS responder started");
@@ -252,8 +242,6 @@ void setup() {
   // start web server
   server.begin();
   Serial.println("HTTP server started");
-
-
 
   // initialize ESP32 board LED matrix
   FastLED.addLeds<LED_TYPE, LED_PIN, COLOR_ORDER>(leds, NUM_LEDS);
@@ -303,142 +291,25 @@ void loop() {
           // start the move
           moveForward();
 
-          //the car detects the location for the left or right turn (coming out of the parking or production area)
-          // the car turns left if it is coming out of parking area or it turns right if it is coming out of production area
-          if (L1 && R1 && !L3 && !R3) {
-            stop();
-            // car is coming out of parking area --> it turns left
-            if (sourceLocation > targetLocation) {
-              state = 2;
-            }
-            // car is coming of production area --> it turns right
-            else {
-              state = 4;
-            }
-            break;
-          }
-          // the car detects the location for the left turn at the grid outer borders -- > the car must turn left
-          else if (L1 && R1 && L2 && R2 && !L3 && R3) {
-            // if this condition is met after the first left turn, the car could be at the T-junction --> pass this iteration of switch and try again
-            if (turnsMade == 1) {
-              Serial.println("left turns made = 1, don't turn, pass this loop iteration");
-              turnsMade++;
-              delay(50);
-              break;
-            }
-            // if this condition is met before the first left turn or after the T-junction, a normal left turn is made
-            else {
-              stop();
-              state = 2;
-              Serial.println("left turns made = " + String(turnsMade) + ", turn left");
-              turnsMade++;
-              break;
-            }
-          }
-          //the car detects the location for the right turn at the grid outer borders --> the car must turn right
-          else if (L1 && R1 && L2 && R2 && L3 && !R3) {
-
-            // if this condition is met after the first turn, the car could be at the T-junction --> pass this iteration of switch and try again
-            if (turnsMade == 1) {
-              Serial.println("turns made = 1, don't turn, pass this loop iteration");
-              turnsMade++;
-              delay(50);
-              break;
-            }
-            // if this condition is met before the first turn or after the T-junction, a normal right turn is made
-            else {
-              stop();
-              state = 4;
-              Serial.println("turns made = " + String(turnsMade) + ", turn right");
-              turnsMade++;
-              break;
-            }
-
-          }
-          //the car detects the location for the left turn at the parking area --> the car turns left under two conditions:
-          // 1. it is moving from a production area (1 to 4) to a parking area (5 to 9)
-          // 2. it has passed the "numOfLeftTurnsToPass" turns
-          else if ((!L1 || !R1) && !L3 && R3) {
-            if ((sourceLocation < targetLocation) && (numOfLeftTurns > numOfLeftTurnsToPass)) {
-              //            if (sourceLocation < targetLocation) {
-              stop();
-              state = 3;
-              break;
-            }
-            else {
-              numOfLeftTurns++;
-              break;
-            }
-          }
-          //the car detects the location for the right turn at the production area --> the car turns right under two conditions:
-          // 1. it is moving from a parking area (5 to 9) to a production area (1 to 4)
-          // 2. it has passed the "numOfRightRightTurnsToPass" turns
-          else if ((!L1 || !R1) && L3 && !R3) {
-            if ((sourceLocation > targetLocation) && (numOfRightTurns > numOfRightTurnsToPass)) {
-              //            if (sourceLocation > targetLocation) {
-              stop();
-              state = 5;
-              break;
-            }
-            else {
-              numOfRightTurns++;
-              break;
-            }
-          }
-          else if ((!L1 || !R1) && L3 && R3) {
-            // no condition met for turning left or right, continue to move forward
-            state = 1;
-          }
-          // the car detects the end location for the car move (either the production area or the parking area)
-          else if ((!L1 || !R1) && !L3 && !R3) {
-            stop();
-            state = 6;
-            break;
-          }
         }
         else {
           Serial.println("no request to move received");
         }
         break;
       }
-    // case 2: turn the car left (at the grid outer turns or coming out of the parking area)
+    // case 2: move backward
     case 2: {
-        turnLeft();
-        // the car turns until the sensors R2 detects the line
-        if (!R1) {
-          stop();
-          state = 1;
-        }
+        moveBackward();
         break;
       }
-    // case 3: turn the car left (going to the parking area)
+    // case 3: turn the car left
     case 3: {
         turnLeft();
-        // the car turns until the sensor R3 detects the line
-        if (!R3) {
-          stop();
-          state = 1;
-        }
         break;
       }
-    // case 4: turn the car right (at the grid outer turns or coming out of the production area)
+    // case 4: turn the car right
     case 4: {
         turnRight();
-        // the car turns until the sensors L2 detects the line
-        if (!L1) {
-          stop();
-          state = 1;
-        }
-        break;
-      }
-    // case 5: turn the car right (going to the production area)
-    case 5: {
-        turnRight();
-        // the car turns until the sensors L3
-        if (!L3) {
-          stop();
-          state = 1;
-        }
         break;
       }
     // case 6: the car is at the end location --> send http message to Node.js control app and switch to state 1
@@ -446,12 +317,12 @@ void loop() {
         busy = false;
         state = 1;
 
-        // call Node.js control app
-        // create HTTP client
-        HTTPClient http;
+        // call Node.js control app 
+        // OR the student app??? should I read the IP and port from the request?
         //      set server host and path
         String httpURL = controlAppIp + String(controlAppPort) + "/report?taskId=" + String(taskId) + "&state=done";
         Serial.println("http url: " + httpURL);
+        // TODO: change the API endpoint
         http.begin(controlAppIp, controlAppPort, "/report?taskId=" + String(taskId) + "&state=done"); //HTTP
         //      http.begin("192.168.137.1", , controlAppPort, "/report?taskId=" + String(taskId) + "&state=done"); //HTTP
         // start the connection and send HTTP header
@@ -478,71 +349,16 @@ void loop() {
   }
 }
 
-// basic line following
+// basic forward move
 void moveForward() {
   Serial.println("moving forward");
+  mp->motorControl(mp->eALL, mp->eCW, 50);
+}
 
-  // 1001
-  if (L2 && !L1 && !R1 && R2) {
-    mp->motorControl(mp->eALL, mp->eCW, 50);
-    //    Serial.println("A");
-  }
-  // 1101
-  else if (L2 && L1 && !R1 && R2) {
-    mp->motorControl(mp->eLEFT, mp->eCW, 50);
-    mp->motorControl(mp->eRIGHT, mp->eCW, 37);
-    //    Serial.println("B");
-  }
-  // 1100
-  else if (L2 && L1 && !R1 && !R2) {
-    mp->motorControl(mp->eLEFT, mp->eCW, 50);
-    mp->motorControl(mp->eRIGHT, mp->eCW, 0);
-    //    Serial.println("C");
-  }
-  // 1110
-  else if (L2 && L1 && R1 && !R2) {
-    mp->motorControl(mp->eLEFT, mp->eCW, 50);
-    mp->motorControl(mp->eRIGHT, mp->eCCW, 20);
-    //    Serial.println("D");
-  }
-  // 1011
-  else if (L2 && !L1 && R1 && R2) {
-    mp->motorControl(mp->eLEFT, mp->eCW, 37);
-    mp->motorControl(mp->eRIGHT, mp->eCW, 50);
-    //    Serial.println("E");
-  }
-  // 0011
-  else if (!L2 && !L1 && R1 && R2) {
-    mp->motorControl(mp->eLEFT, mp->eCW, 0);
-    mp->motorControl(mp->eRIGHT, mp->eCW, 50);
-    //    Serial.println("F");
-  }
-
-  // 0111
-  else if (!L2 && L1 && R1 && R2) {
-    mp->motorControl(mp->eLEFT, mp->eCCW, 20);
-    mp->motorControl(mp->eRIGHT, mp->eCW, 50);
-    //    Serial.println("G");
-  }
-  // 1111
-  else if (L2 && L1 && R1 && R2) {
-    mp->motorControl(mp->eALL, mp->eCW, 45);
-    //    Serial.println("H");
-  }
-
-  // if the flag is true (during the first iteration of the loop function after busy is set to true, wait for 500 ms
-  // this is to ensure that the car moves from the original position (current parking or production area)
-  if (startFlag) {
-    delay(1000);
-    startFlag = false;
-    // read the sensor values again otherwise the car will stop
-    L1 = mp->getPatrol(mp->eL1);
-    L2 = mp->getPatrol(mp->eL2);
-    L3 = mp->getPatrol(mp->eL3);
-    R1 = mp->getPatrol(mp->eR1);
-    R2 = mp->getPatrol(mp->eR2);
-    R3 = mp->getPatrol(mp->eR3);
-  }
+// basic backward move
+void moveBackward() {
+  Serial.println("moving backward");
+  mp->motorControl(mp->eALL, mp->eCCW, 50);
 }
 
 // turn left: move the right motor backwards (counter clockwise) and the left motor forward (clockwise)
@@ -564,44 +380,6 @@ void stop() {
   // Serial.println("stopping");
   mp->motorControl(mp->eALL, mp->eCW, 0);
   mp->motorControl(mp->eALL, mp->eCCW, 0);
-}
-
-// calculate how many left turn to pass if going to a parking area
-// this depends on the source location and the id of the parking area
-int getLeftTurnsToPass() {
-  int leftTurnsToPass = 0;
-  // if the source is one of the production areas
-  if (sourceLocation < mainRoboticArmLocation) {
-    leftTurnsToPass = 2 * (targetLocation - firstParkingAreaLocation);
-  }
-  // if the source is the warehouse
-  else {
-    // if the target is positioned before the warehouse (anti-clockwise)
-    if ((targetLocation - sourceLocation) <= 2) {
-      leftTurnsToPass = 2 * 2 + 2 * (targetLocation - firstParkingAreaLocation);
-    }
-    // if the target is positioned behind the warehouse (anti-clockwise) and is the last parking area, we skip the one before it
-    else if (targetLocation == lastParkingAreaLocation) {
-      leftTurnsToPass = 2;
-    }
-    // else: the target is the first parking after the warehouse and there are no left turns to pass
-  }
-  return leftTurnsToPass;
-}
-
-// calculate how many right turn to pass if going to a parking area
-// this depends on the source location and the id of the parking area
-int getRightTurnsToPass() {
-  int rightTurnsToPass = 0;
-  // if we move from a warehouse to a production area
-  if (sourceLocation > targetLocation ) {
-    rightTurnsToPass = 2 * (targetLocation - firstProductionAreaLocation);
-  }
-  // if we move from a production area to the warehouse
-  else {
-    rightTurnsToPass = 2 * (lastProductionAreaLocation - sourceLocation);
-  }
-  return rightTurnsToPass;
 }
 
 // check current values of all relevant sensors
