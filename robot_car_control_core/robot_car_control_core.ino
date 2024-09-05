@@ -18,8 +18,10 @@ int L1, L2, L3, R1, R2, R3;
 // this flag is set to true in the first iteration of the loop after busy variable is set to true and set to false immediately after that
 bool startFlag = false;
 
-String dir = ""; // default: forward
-String taskId = ""; // default: 0
+String dir = "forward"; // default direction
+int motorSpeed = 50; // default speed
+String taskId = "0"; // default task Id
+const int distanceThreshold = 20; // distance threshold for detecting nearby objects with ultrasound sensors
 
 // **************** WiFi parameters *********************
 WebServer server(8000);
@@ -142,23 +144,31 @@ void handleMove() {
 
   // check if all parameters are present
   if (server.arg(0) == "") {
-    JSONdocument["status"] = "reject, missing dir location";
+    JSONdocument["status"] = "rejected, missing direction";
     String message;
     serializeJson(JSONdocument, message);
     server.send(200, "text/plain", message);
   }
   else if (server.arg(1) == "") {
-    JSONdocument["status"] = "reject, missing task id";
+    JSONdocument["status"] = "rejected, missing speed";
     String message;
     serializeJson(JSONdocument, message);
     server.send(200, "text/plain", message);
   }
+  else if (server.arg(2) == "") {
+    JSONdocument["status"] = "rejected, missing task id";
+    String message;
+    serializeJson(JSONdocument, message);
+    server.send(200, "text/plain", message);
+  }
+
   else {
 
     dir = server.arg(0);
+    motorSpeed = server.arg(1).toInt();
     taskId = server.arg(1);
 
-    Serial.println("received a task to move, direction: " + dir + ", task id: " + String(taskId));
+    Serial.println("received a task to move, direction: " + dir + ", motor speed: " + String(motorSpeed) + ", task id: " + String(taskId));
 
     if (dir != "forward" && dir != "backward" && dir != "left" && dir != "right" && dir != "stop") {
       JSONdocument["status"] = "reject, invalid direction";
@@ -266,6 +276,18 @@ void setupLEDMatrix() {
   FastLED.setBrightness(max_bright);  // Set maximum brightness
 }
 
+// Function to check ultrasonic sensors for nearby objects and stop the robot if an object is detected
+void checkUltrasoundSensors() {
+  // Read distance from the ultrasonic sensor
+  uint8_t distance = mp->ultraSonic(mp->eP13, mp->eP14);
+
+  // If an object is detected within the threshold distance, stop the robot
+  if (distance > 0 && distance < distanceThreshold) {  // 0 means no object detected, so we check for > 0
+    Serial.println("Object detected within " + String(distanceThreshold) + " cm. Stopping the robot.");
+    stop();  // Call the stop function to stop the robot
+  }
+}
+
 void setup() {
   // initialize serial print
   Serial.begin(115200);
@@ -292,6 +314,9 @@ void loop() {
 
   // Serial.println(mp->getVersion());
   //  checkAllSensors();
+
+  // Check ultrasonic sensors for nearby objects and stop if detected
+  checkUltrasoundSensors();
 
   // handle incoming requests
   server.handleClient();
@@ -327,45 +352,58 @@ void loop() {
   else if (dir == "stop") {
     stop();
   }
-
 }
 
 // Function to move the robot car forward
 // This function sets both motors to move forward (clockwise) at a given speed.
 void moveForward() {
-  Serial.println("moving forward");
-  mp->motorControl(mp->eALL, mp->eCW, 50);
+  int moveSpeed = constrain(motorSpeed, 0, 100);  // Limit speed to 100
+  Serial.println("moving forward at speed " + String(moveSpeed));
+  showString("forward, " + String(moveSpeed));
+  mp->setRGB(mp->eALL, mp->eGREEN);
+  mp->motorControl(mp->eALL, mp->eCW, moveSpeed);
 }
 
 // Function to move the robot car backward
 // This function sets both motors to move backward (counterclockwise) at a given speed.
 void moveBackward() {
-  Serial.println("moving backward");
-  mp->motorControl(mp->eALL, mp->eCCW, 50);
+  int moveSpeed = constrain(motorSpeed, 0, 100);  // Limit speed to 100
+  Serial.println("moving backward at speed " + String(moveSpeed));
+  showString("back, " + String(moveSpeed));
+  mp->setRGB(mp->eALL, mp->eBLUE);
+  mp->motorControl(mp->eALL, mp->eCCW, moveSpeed);
 }
 
 // Function to turn the robot car to the left
 // This function sets the left motor to move backward (counterclockwise)
 // and the right motor to move forward (clockwise) to achieve a left turn.
 void turnLeft() {
-  Serial.println("turning left");
-  mp->motorControl(mp->eLEFT, mp->eCCW, 45);
-  mp->motorControl(mp->eRIGHT, mp->eCW, 45);
+  int turnSpeed = constrain(motorSpeed, 0, 50);  // Limit speed to 50
+  Serial.println("turning left at speed " + String(turnSpeed));
+  showString("left, " + String(turnSpeed));
+  mp->setRGB(mp->eALL, mp->eYELLOW);
+  mp->motorControl(mp->eLEFT, mp->eCCW, turnSpeed);
+  mp->motorControl(mp->eRIGHT, mp->eCW, turnSpeed);
 }
 
 // Function to turn the robot car to the right
 // This function sets the right motor to move backward (counterclockwise)
 // and the left motor to move forward (clockwise) to achieve a right turn.
 void turnRight() {
-  Serial.println("turning right");
-  mp->motorControl(mp->eLEFT, mp->eCW, 45);
-  mp->motorControl(mp->eRIGHT, mp->eCCW, 45);
+  int turnSpeed = constrain(motorSpeed, 0, 50);  // Limit speed to 50
+  Serial.println("turning right at speed " + String(turnSpeed));
+  showString("right, " + String(turnSpeed));
+  mp->setRGB(mp->eALL, mp->eCYAN);
+  mp->motorControl(mp->eLEFT, mp->eCW, turnSpeed);
+  mp->motorControl(mp->eRIGHT, mp->eCCW, turnSpeed);
 }
 
 // Function to stop both motors of the robot car
 // This function stops all movement by setting both motors to 0 speed.
 void stop() {
   // Serial.println("stopping");
+  showString("stop");
+  mp->setRGB(mp->eALL, mp->eRED);
   mp->motorControl(mp->eALL, mp->eCW, 0);
   mp->motorControl(mp->eALL, mp->eCCW, 0);
 }
