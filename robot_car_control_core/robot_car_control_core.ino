@@ -11,17 +11,14 @@
 
 
 // **************** global app variables *********************
-int state = 1; // default: 1
-bool busy = false; // default: false
 // variables for robot cars' infrared sensors (1 means black, 0 means white)
 int L1, L2, L3, R1, R2, R3;
-// this flag is set to true in the first iteration of the loop after busy variable is set to true and set to false immediately after that
-bool startFlag = false;
 
 String dir = "forward"; // default direction
 int motorSpeed = 50; // default speed
 String taskId = "0"; // default task Id
 const int distanceThreshold = 20; // distance threshold for detecting nearby objects with ultrasound sensors
+CRGB whiteColor = CRGB(255, 255, 255); // for showing the text on the board matrix
 
 // **************** WiFi parameters *********************
 WebServer server(8000);
@@ -89,7 +86,7 @@ void plotMatrixChar(CRGB (*matrix)[5], CRGB myRGBcolor, int x, char character, i
   }
 }
 
-void ShowChar(char myChar, CRGB myRGBcolor) {
+void showChar(char myChar, CRGB myRGBcolor) {
   CRGB matrixBackColor[2 * NUM_COLUMNS][NUM_ROWS];
   int mapLED[] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24};
   plotMatrixChar(matrixBackColor, myRGBcolor, 0 , myChar, NUM_COLUMNS, NUM_ROWS);
@@ -104,7 +101,7 @@ void ShowChar(char myChar, CRGB myRGBcolor) {
   FastLED.delay(30);
 }
 
-void ShowString(String sMessage, CRGB myRGBcolor) {
+void showString(String sMessage, CRGB myRGBcolor) {
   CRGB matrixBackColor[2 * NUM_COLUMNS][NUM_ROWS];
   int mapLED[] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24};
   int messageLength = sMessage.length();
@@ -305,7 +302,7 @@ void setup() {
   setupLEDMatrix();
 
   // Additional initialization for the MaqueenPlus robot car
-  mp->setRGB(mp->eALL, mp->eBLUE);
+  mp->setRGB(mp->eALL, mp->eYELLOW);
   // enable MaqueenPlus PID operation control
   mp->PIDSwitch(mp->eON);
 }
@@ -321,11 +318,7 @@ void loop() {
   // handle incoming requests
   server.handleClient();
 
-  Serial.println("robot state: " + String(state));
-  //   ShowChar function expects a character, while state is an int value
-  //  --> adding 48 converts an integer value (0 to 9) to char (decimal values from 48 to 57)
-  ShowChar(state + 48, myRGBcolor_zyvx);
-
+  // read values of infrared sensors
   L1 = mp->getPatrol(mp->eL1);
   L2 = mp->getPatrol(mp->eL2);
   L3 = mp->getPatrol(mp->eL3);
@@ -359,7 +352,7 @@ void loop() {
 void moveForward() {
   int moveSpeed = constrain(motorSpeed, 0, 100);  // Limit speed to 100
   Serial.println("moving forward at speed " + String(moveSpeed));
-  showString("forward, " + String(moveSpeed));
+  showString("forward, " + String(moveSpeed), whiteColor);
   mp->setRGB(mp->eALL, mp->eGREEN);
   mp->motorControl(mp->eALL, mp->eCW, moveSpeed);
 }
@@ -369,7 +362,7 @@ void moveForward() {
 void moveBackward() {
   int moveSpeed = constrain(motorSpeed, 0, 100);  // Limit speed to 100
   Serial.println("moving backward at speed " + String(moveSpeed));
-  showString("back, " + String(moveSpeed));
+  showString("back, " + String(moveSpeed), whiteColor);
   mp->setRGB(mp->eALL, mp->eBLUE);
   mp->motorControl(mp->eALL, mp->eCCW, moveSpeed);
 }
@@ -380,8 +373,8 @@ void moveBackward() {
 void turnLeft() {
   int turnSpeed = constrain(motorSpeed, 0, 50);  // Limit speed to 50
   Serial.println("turning left at speed " + String(turnSpeed));
-  showString("left, " + String(turnSpeed));
-  mp->setRGB(mp->eALL, mp->eYELLOW);
+  showString("left, " + String(turnSpeed), whiteColor);
+  mp->setRGB(mp->eALL, mp->eCYAN);
   mp->motorControl(mp->eLEFT, mp->eCCW, turnSpeed);
   mp->motorControl(mp->eRIGHT, mp->eCW, turnSpeed);
 }
@@ -392,7 +385,7 @@ void turnLeft() {
 void turnRight() {
   int turnSpeed = constrain(motorSpeed, 0, 50);  // Limit speed to 50
   Serial.println("turning right at speed " + String(turnSpeed));
-  showString("right, " + String(turnSpeed));
+  showString("right, " + String(turnSpeed), whiteColor);
   mp->setRGB(mp->eALL, mp->eCYAN);
   mp->motorControl(mp->eLEFT, mp->eCW, turnSpeed);
   mp->motorControl(mp->eRIGHT, mp->eCCW, turnSpeed);
@@ -402,7 +395,7 @@ void turnRight() {
 // This function stops all movement by setting both motors to 0 speed.
 void stop() {
   // Serial.println("stopping");
-  showString("stop");
+  showString("stop", whiteColor);
   mp->setRGB(mp->eALL, mp->eRED);
   mp->motorControl(mp->eALL, mp->eCW, 0);
   mp->motorControl(mp->eALL, mp->eCCW, 0);
@@ -425,7 +418,7 @@ void checkAllSensors() {
   Serial.println("R3: " + String(mp->getPatrol(mp->eR3)));
   //  unsigned long time7 = micros();
 
-  //  uint8_t distance = mp->ultraSonic(mp->eP32, mp->eP25);
-  //  ShowString(String(distance), myRGBcolor_zyvx);
+  //  uint8_t distance = mp->ultraSonic(mp->eP13, mp->eP12);
+  //  showString(String(distance), myRGBcolor_zyvx);
   //  Serial.println("ultrasonic distance: " + String(distance));
 }
