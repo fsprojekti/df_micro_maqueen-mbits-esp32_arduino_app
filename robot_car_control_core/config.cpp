@@ -1,5 +1,5 @@
 // config.cpp
 #include "config.h"
 
-const char* ssid = "Your_SSID";        // Define ssid
-const char* password = "Your_Password"; // Define password
+const char* ssid = "NSSM";        // Define ssid
+const char* password = "NSSM1234"; // Define password
