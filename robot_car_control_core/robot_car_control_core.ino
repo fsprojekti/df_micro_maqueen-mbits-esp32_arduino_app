@@ -8,20 +8,24 @@
 // Include the config file
 #include "config.h"
 
+#include <SPI.h>
+#include <MFRC522.h>
 
 // **************** global app variables *********************
+String dir = "forward";  // default direction
+int motorSpeed = 50;     // default speed
+String taskId = "0";     // default task Id
 
-String dir = "forward";            // default direction
-int motorSpeed = 50;               // default speed
-String taskId = "0";               // default task Id
-const int distanceThreshold = 20;  // distance threshold for detecting nearby objects with ultrasound sensors
-
-// **************** WiFi parameters *********************
+// **************** WiFi / Web parameters *********************
 WebServer server(8000);
+HTTPClient http; // create HTTP client
 
-// create HTTP client
-HTTPClient http;
+// **************** RFID parameters *********************
+// RFID pin definitions for BPI:bit (ESP32-based)
+#define RST_PIN 4  // Configurable, connected to RFID module RST pin
+#define SS_PIN 5   // Configurable, connected to RFID module SDA pin
 
+MFRC522 mfrc522(SS_PIN, RST_PIN);  // Create MFRC522 instance
 
 // **************** Mbits I2C settings *********************
 DFRobot_MaqueenPlus mp;
@@ -70,42 +74,42 @@ const uint8_t font[26][5] = {
 
 // Function to draw a character on the matrix with a horizontal flip
 void drawChar(char c) {
-    Serial.println("drawing character: " + String(c));  // Correct string concatenation
+  Serial.println("drawing character: " + String(c));  // Correct string concatenation
 
-    clearMatrix();  // Clear the matrix before drawing a new character
+  clearMatrix();  // Clear the matrix before drawing a new character
 
-    if (c < 'A' || c > 'Z') return;  // Only draw uppercase letters
+  if (c < 'A' || c > 'Z') return;  // Only draw uppercase letters
 
-    int index = c - 'A';  // Get the index in the font array
+  int index = c - 'A';  // Get the index in the font array
 
-    // Iterate through the 5 rows of the character
-    for (int y = 0; y < 5; y++) {
-        uint8_t rowData = font[index][y];  // Get the row data for the character
+  // Iterate through the 5 rows of the character
+  for (int y = 0; y < 5; y++) {
+    uint8_t rowData = font[index][y];  // Get the row data for the character
 
-        // Reverse the bits in the row to mirror the character horizontally
-        uint8_t reversedRow = 0;
-        for (int bit = 0; bit < 5; bit++) {
-            if (rowData & (1 << bit)) {
-                reversedRow |= (1 << (4 - bit));  // Flip the bits within the row
-            }
-        }
-
-        // Iterate through the 5 columns of the reversed row
-        for (int x = 0; x < 5; x++) {
-            // Check if the bit is set (pixel is on)
-            if (reversedRow & (1 << (4 - x))) {  // Check each bit from left to right after reversal
-                
-                // Calculate LED index according to your matrix layout
-                int ledIndex = (x * 5) + y;  // Corrected index calculation for the matrix layout
-
-                // Draw the pixel if it is within the matrix boundaries
-                if (ledIndex >= 0 && ledIndex < PixelCount) {
-                    strip.SetPixelColor(ledIndex, white);  // Set the pixel to white
-                }
-            }
-        }
+    // Reverse the bits in the row to mirror the character horizontally
+    uint8_t reversedRow = 0;
+    for (int bit = 0; bit < 5; bit++) {
+      if (rowData & (1 << bit)) {
+        reversedRow |= (1 << (4 - bit));  // Flip the bits within the row
+      }
     }
-    strip.Show();  // Show the updated display
+
+    // Iterate through the 5 columns of the reversed row
+    for (int x = 0; x < 5; x++) {
+      // Check if the bit is set (pixel is on)
+      if (reversedRow & (1 << (4 - x))) {  // Check each bit from left to right after reversal
+
+        // Calculate LED index according to your matrix layout
+        int ledIndex = (x * 5) + y;  // Corrected index calculation for the matrix layout
+
+        // Draw the pixel if it is within the matrix boundaries
+        if (ledIndex >= 0 && ledIndex < PixelCount) {
+          strip.SetPixelColor(ledIndex, white);  // Set the pixel to white
+        }
+      }
+    }
+  }
+  strip.Show();  // Show the updated display
 }
 
 
@@ -234,7 +238,6 @@ void setupWiFi() {
 }
 
 void setupI2C() {
-
   Serial.println("initialize MaqueenPlus I2C communication");
   mp.begin();  // Initialize I2C communication with the MaqueenPlus
 }
@@ -257,62 +260,10 @@ void setupLEDMatrix() {
   Serial.println("LED matrix initialized.");
 }
 
-// Function to check ultrasonic sensors for nearby objects and stop the robot if an object is detected
-void checkUltrasoundSensors() {
-  // Read distance from the ultrasonic sensor
-  uint8_t distance = mp.ultraSonic(mp.eP13, mp.eP14);
-  Serial.println("Ultrasound sensors detected distance :" + String(distance));
-
-  // If an object is detected within the threshold distance, stop the robot
-  if (distance > 0 && distance < distanceThreshold) {  // 0 means no object detected, so we check for > 0
-    Serial.println("Object detected within " + String(distanceThreshold) + " cm. Stopping the robot.");
-    stop();  // Call the stop function to stop the robot
-  }
-}
-
-void setup() {
-  // initialize serial print
-  Serial.begin(115200);
-
-  // Step 1: Set up WiFi connection
-  setupWiFi();
-
-  // Step 2: Initialize I2C communication
-  setupI2C();
-
-  // Step 3: Set up the web server
-  setupWebServer();
-
-  // Step 4: Initialize the LED matrix
-  setupLEDMatrix();
-
-  // Additional initialization for the MaqueenPlus robot car
-  mp.setRGB(mp.eALL, mp.eNO);
-  // enable MaqueenPlus PID operation control
-  mp.PIDSwitch(mp.eON);
-}
-
-void loop() {
-
-  // handle incoming requests
-  server.handleClient();
-
-
-  if (dir == "forward") {
-    //stop();
-    moveForward();
-  } else if (dir == "backward") {
-    //stop();
-    moveBackward();
-  } else if (dir == "left") {
-    //stop();
-    turnLeft();
-  } else if (dir == "right") {
-    //stop();
-    turnRight();
-  } else if (dir == "stop") {
-    stop();
-  }
+void setupRFID() {
+    SPI.begin();
+    mfrc522.PCD_Init();
+    Serial.println("RFID reader initialized. Scan an RFID tag...");
 }
 
 // Function to move the robot car forward
@@ -339,7 +290,7 @@ void moveBackward() {
 // This function sets the left motor to move backward (counterclockwise)
 // and the right motor to move forward (clockwise) to achieve a left turn.
 void turnLeft() {
-  int turnSpeed = constrain(motorSpeed, 0, 50);  // Limit speed to 
+  int turnSpeed = constrain(motorSpeed, 0, 50);  // Limit speed to
   Serial.println("turning left at speed " + String(turnSpeed));
   drawChar('L');
   mp.setRGB(mp.eLEFT, mp.eRED);
@@ -370,3 +321,93 @@ void stop() {
   mp.motorControl(mp.eALL, mp.eCW, 0);
   mp.motorControl(mp.eALL, mp.eCCW, 0);
 }
+
+String readRFID() {
+    if (!mfrc522.PICC_IsNewCardPresent()) return "";  // Return empty string if no card is present
+    if (!mfrc522.PICC_ReadCardSerial()) return "";    // Return empty string if reading fails
+
+    // Convert UID to a string
+    String uidString = "";
+    for (byte i = 0; i < mfrc522.uid.size; i++) {
+        if (mfrc522.uid.uidByte[i] < 0x10) uidString += "0";  // Add leading zero for single hex digit
+        uidString += String(mfrc522.uid.uidByte[i], HEX);     // Convert each byte to a hex string
+    }
+
+    uidString.toUpperCase();  // Convert to uppercase for consistency
+    mfrc522.PICC_HaltA();     // Halt PICC (Proximity Integrated Circuit Card)
+
+    return uidString;  // Return the UID as a string
+}
+
+void sendUIDToServer(String uid) {
+    // Construct the URL
+    String url = String(serverIP) + String(endpoint) + "?uid=" + uid;
+    Serial.println("Sending UID to server: " + url);
+
+    http.begin(url);  // Specify the URL
+    int httpResponseCode = http.GET();  // Send the request
+
+    if (httpResponseCode > 0) {
+        Serial.println("HTTP Response code: " + String(httpResponseCode));
+        String payload = http.getString();
+        Serial.println("Response from server: " + payload);
+    } else {
+        Serial.println("Error on sending GET: " + String(httpResponseCode));
+    }
+    http.end();  // Free resources
+}
+
+void setup() {
+  // initialize serial print
+  Serial.begin(115200);
+
+  // Step 1: Set up WiFi connection
+  setupWiFi();
+
+  // Step 2: Initialize I2C communication
+  setupI2C();
+
+  // Step 3: Initialize RFID reader
+  setupRFID();
+
+  // Step 4: Set up the web server
+  setupWebServer();
+
+  // Step 5: Initialize the LED matrix
+  setupLEDMatrix();
+
+  // Additional initialization for the MaqueenPlus robot car
+  mp.setRGB(mp.eALL, mp.eNO);
+  // enable MaqueenPlus PID operation control
+  mp.PIDSwitch(mp.eON);
+}
+
+void loop() {
+
+  // handle incoming requests
+  server.handleClient();
+
+  String uuid = readRFID();
+  if (rfidUID != "") {  // Check if a valid UID is read
+        Serial.println("Detected RFID Tag UID: " + rfidUID);
+        sendUIDToServer(rfidUID);  // Send UID to the server
+    }
+
+
+  if (dir == "forward") {
+    //stop();
+    moveForward();
+  } else if (dir == "backward") {
+    //stop();
+    moveBackward();
+  } else if (dir == "left") {
+    //stop();
+    turnLeft();
+  } else if (dir == "right") {
+    //stop();
+    turnRight();
+  } else if (dir == "stop") {
+    stop();
+  }
+}
+
