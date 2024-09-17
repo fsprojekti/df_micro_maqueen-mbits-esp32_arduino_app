@@ -11,10 +11,10 @@
 
 // **************** global app variables *********************
 
-String dir = "forward";                 // default direction
-int motorSpeed = 50;                    // default speed
-String taskId = "0";                    // default task Id
-const int distanceThreshold = 20;       // distance threshold for detecting nearby objects with ultrasound sensors
+String dir = "forward";            // default direction
+int motorSpeed = 50;               // default speed
+String taskId = "0";               // default task Id
+const int distanceThreshold = 20;  // distance threshold for detecting nearby objects with ultrasound sensors
 
 // **************** WiFi parameters *********************
 WebServer server(8000);
@@ -68,62 +68,51 @@ const uint8_t font[26][5] = {
   { 0b11111, 0b00010, 0b00100, 0b01000, 0b11111 },  // Z
 };
 
-void drawChar(char c, int offsetX) {
-  if (c < 'A' || c > 'Z') return;  // Only draw uppercase letters
+// Function to draw a character on the matrix with a horizontal flip
+void drawChar(char c) {
+    Serial.println("drawing character: " + String(c));  // Correct string concatenation
 
-  int index = c - 'A';  // Get the index in the font array
+    clearMatrix();  // Clear the matrix before drawing a new character
 
-  // Iterate through the 5 rows of the character
-  for (int y = 0; y < 5; y++) {
-    uint8_t rowData = font[index][y];  // Get the row data for the character
+    if (c < 'A' || c > 'Z') return;  // Only draw uppercase letters
 
-    // Reverse the bits in the row to mirror the character horizontally
-    uint8_t reversedRow = 0;
-    for (int bit = 0; bit < 5; bit++) {
-      if (rowData & (1 << bit)) {
-        reversedRow |= (1 << (4 - bit));
-      }
-    }
+    int index = c - 'A';  // Get the index in the font array
 
-    // Iterate through the 5 columns of the row
-    for (int x = 0; x < 5; x++) {
-      int posX = x + offsetX;  // Calculate the horizontal position with offset
+    // Iterate through the 5 rows of the character
+    for (int y = 0; y < 5; y++) {
+        uint8_t rowData = font[index][y];  // Get the row data for the character
 
-      if (posX < 0 || posX >= 5) continue;  // Skip drawing if out of visible range
-
-      // Check if the bit is set (pixel is on)
-      if (reversedRow & (1 << x)) {
-        int ledIndex = ((4 - posX) * 5) + y;  // Flip vertically to calculate LED index on the matrix
-
-        // Draw the pixel if it is within the matrix boundaries
-        if (ledIndex >= 0 && ledIndex < PixelCount) {
-          strip.SetPixelColor(ledIndex, white);  // Set the pixel to white
+        // Reverse the bits in the row to mirror the character horizontally
+        uint8_t reversedRow = 0;
+        for (int bit = 0; bit < 5; bit++) {
+            if (rowData & (1 << bit)) {
+                reversedRow |= (1 << (4 - bit));  // Flip the bits within the row
+            }
         }
-      }
+
+        // Iterate through the 5 columns of the reversed row
+        for (int x = 0; x < 5; x++) {
+            // Check if the bit is set (pixel is on)
+            if (reversedRow & (1 << (4 - x))) {  // Check each bit from left to right after reversal
+                
+                // Calculate LED index according to your matrix layout
+                int ledIndex = (x * 5) + y;  // Corrected index calculation for the matrix layout
+
+                // Draw the pixel if it is within the matrix boundaries
+                if (ledIndex >= 0 && ledIndex < PixelCount) {
+                    strip.SetPixelColor(ledIndex, white);  // Set the pixel to white
+                }
+            }
+        }
     }
-  }
+    strip.Show();  // Show the updated display
 }
+
 
 // Function to clear the matrix
 void clearMatrix() {
   for (int i = 0; i < PixelCount; i++) {
     strip.SetPixelColor(i, black);  // Set all pixels to black (off)
-  }
-  strip.Show();  // Update the display
-}
-
-void scrollText(const char* text, int delayMs) {
-  int textLength = strlen(text);    // Get the length of the text
-  int totalWidth = textLength * 6;  // Each character is 5 pixels wide + 1 pixel space
-
-  // Scroll from right to left
-  for (int offset = 5; offset > -totalWidth; offset--) {  // Start from right and move left
-    clearMatrix();                                        // Clear the matrix
-    for (int i = 0; i < textLength; i++) {
-      drawChar(text[i], offset + (i * 6));  // Draw each character with spacing
-    }
-    strip.Show();  // Update the display
-    delay(delayMs);
   }
 }
 
@@ -297,7 +286,6 @@ void setup() {
   // Step 4: Initialize the LED matrix
   setupLEDMatrix();
 
-
   // Additional initialization for the MaqueenPlus robot car
   mp.setRGB(mp.eALL, mp.eNO);
   // enable MaqueenPlus PID operation control
@@ -308,6 +296,7 @@ void loop() {
 
   // handle incoming requests
   server.handleClient();
+
 
   if (dir == "forward") {
     //stop();
@@ -331,7 +320,7 @@ void loop() {
 void moveForward() {
   int moveSpeed = constrain(motorSpeed, 0, 100);  // Limit speed to 100
   Serial.println("moving forward at speed " + String(moveSpeed));
-  scrollText("FORWARD", 150);
+  drawChar('F');
   mp.setRGB(mp.eALL, mp.eRED);
   mp.motorControl(mp.eALL, mp.eCW, moveSpeed);
 }
@@ -341,7 +330,7 @@ void moveForward() {
 void moveBackward() {
   int moveSpeed = constrain(motorSpeed, 0, 100);  // Limit speed to 100
   Serial.println("moving backward at speed " + String(moveSpeed));
-  scrollText("BACK", 150);
+  drawChar('B');
   mp.setRGB(mp.eALL, mp.eRED);
   mp.motorControl(mp.eALL, mp.eCCW, moveSpeed);
 }
@@ -350,8 +339,9 @@ void moveBackward() {
 // This function sets the left motor to move backward (counterclockwise)
 // and the right motor to move forward (clockwise) to achieve a left turn.
 void turnLeft() {
-  int turnSpeed = constrain(motorSpeed, 0, 50);  // Limit speed to 50
-  scrollText("LEFT", 150);
+  int turnSpeed = constrain(motorSpeed, 0, 50);  // Limit speed to 
+  Serial.println("turning left at speed " + String(turnSpeed));
+  drawChar('L');
   mp.setRGB(mp.eLEFT, mp.eRED);
   mp.setRGB(mp.eRIGHT, mp.eNO);
   mp.motorControl(mp.eLEFT, mp.eCCW, turnSpeed);
@@ -364,7 +354,7 @@ void turnLeft() {
 void turnRight() {
   int turnSpeed = constrain(motorSpeed, 0, 50);  // Limit speed to 50
   Serial.println("turning right at speed " + String(turnSpeed));
-  scrollText("RIGHT", 150);
+  drawChar('R');
   mp.setRGB(mp.eRIGHT, mp.eRED);
   mp.setRGB(mp.eLEFT, mp.eNO);
   mp.motorControl(mp.eLEFT, mp.eCW, turnSpeed);
@@ -374,8 +364,8 @@ void turnRight() {
 // Function to stop both motors of the robot car
 // This function stops all movement by setting both motors to 0 speed.
 void stop() {
-  // Serial.println("stopping");
-  scrollText("STOP", 150);
+  Serial.println("stopping");
+  drawChar('S');
   mp.setRGB(mp.eALL, mp.eNO);
   mp.motorControl(mp.eALL, mp.eCW, 0);
   mp.motorControl(mp.eALL, mp.eCCW, 0);
