@@ -1,15 +1,15 @@
-#include <NeoPixelBus.h>
+#include <FastLED.h>
+#include "Dots5x5font.h"
 #include <WiFi.h>
 #include <WebServer.h>
 #include <ESPmDNS.h>
 #include <DFRobot_MaqueenPlus.h>
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
+//#include <SPI.h>
+//#include <MFRC522.h>
 // Include the config file
 #include "config.h"
-
-#include <SPI.h>
-#include <MFRC522.h>
 
 // **************** global app variables *********************
 String dir = "forward";  // default direction
@@ -18,105 +18,109 @@ String taskId = "0";     // default task Id
 
 // **************** WiFi / Web parameters *********************
 WebServer server(8000);
-HTTPClient http; // create HTTP client
+HTTPClient http;  // create HTTP client
 
 // **************** RFID parameters *********************
 // RFID pin definitions for BPI:bit (ESP32-based)
-#define RST_PIN 4  // Configurable, connected to RFID module RST pin
-#define SS_PIN 5   // Configurable, connected to RFID module SDA pin
+//  #define RST_PIN 4  // Configurable, connected to RFID module RST pin
+//  #define SS_PIN 5   // Configurable, connected to RFID module SDA pin
 
-MFRC522 mfrc522(SS_PIN, RST_PIN);  // Create MFRC522 instance
+// MFRC522 mfrc522(SS_PIN, RST_PIN);  // Create MFRC522 instance
 
 // **************** Mbits I2C settings *********************
-DFRobot_MaqueenPlus mp;
+// define I2C data and clock pins used on Mbits ESP32 board
+#define I2C_SDA 22
+#define I2C_SCL 21
 
-// **************** LED matrix settings *********************
-// Define the number of LEDs in the 5x5 matrix
-const uint16_t PixelCount = 25;  // 5x5 LED matrix has 25 LEDs
-const uint8_t PixelPin = 4;      // GPIO 4 for LED matrix data line
+// create a pointer to DFRobot_MaqueenPlus object
+// --> this is done because we need to manually set I2C pins and create the DFRobot_MaqueenPlus object inside the setup() function
+// --> a DFRobot_MaqueenPlus object is accessed via a pointer throughout the program
+DFRobot_MaqueenPlus* mp;
+// a TwoWire object is needed for manual I2C pins definition
+TwoWire i2cCustomPins = TwoWire(0);
 
-// Use the RMT method for controlling WS2812 LEDs on ESP32
-NeoPixelBus<NeoGrbFeature, NeoEsp32Rmt0Ws2812xMethod> strip(PixelCount, PixelPin);
+// **************** Mbits LED matrix settings *********************
+#define NUM_ROWS 5
+#define NUM_COLUMNS 5
+#define NUM_LEDS (NUM_ROWS * NUM_COLUMNS)
+#define LED_PIN 13
+#define LED_TYPE WS2812B
+#define COLOR_ORDER GRB
 
-// Define colors
-const RgbColor black(0, 0, 0);
-const RgbColor white(55, 55, 55);
-
-// Define a simple 5x5 pixel font for uppercase letters (A-Z)
-const uint8_t font[26][5] = {
-  { 0b01110, 0b10001, 0b10001, 0b11111, 0b10001 },  // A
-  { 0b11110, 0b10001, 0b11110, 0b10001, 0b11110 },  // B
-  { 0b01110, 0b10001, 0b10000, 0b10001, 0b01110 },  // C
-  { 0b11110, 0b10001, 0b10001, 0b10001, 0b11110 },  // D
-  { 0b11111, 0b10000, 0b11110, 0b10000, 0b11111 },  // E
-  { 0b11111, 0b10000, 0b11110, 0b10000, 0b10000 },  // F
-  { 0b01110, 0b10000, 0b10111, 0b10001, 0b01110 },  // G
-  { 0b10001, 0b10001, 0b11111, 0b10001, 0b10001 },  // H
-  { 0b01110, 0b00100, 0b00100, 0b00100, 0b01110 },  // I
-  { 0b00001, 0b00001, 0b00001, 0b10001, 0b01110 },  // J
-  { 0b10001, 0b10010, 0b11100, 0b10010, 0b10001 },  // K
-  { 0b10000, 0b10000, 0b10000, 0b10000, 0b11111 },  // L
-  { 0b10001, 0b11011, 0b10101, 0b10001, 0b10001 },  // M
-  { 0b10001, 0b11001, 0b10101, 0b10011, 0b10001 },  // N
-  { 0b01110, 0b10001, 0b10001, 0b10001, 0b01110 },  // O
-  { 0b11110, 0b10001, 0b11110, 0b10000, 0b10000 },  // P
-  { 0b01110, 0b10001, 0b10101, 0b10011, 0b01111 },  // Q
-  { 0b11110, 0b10001, 0b11110, 0b10010, 0b10001 },  // R
-  { 0b01111, 0b10000, 0b01110, 0b00001, 0b11110 },  // S
-  { 0b11111, 0b00100, 0b00100, 0b00100, 0b00100 },  // T
-  { 0b10001, 0b10001, 0b10001, 0b10001, 0b01110 },  // U
-  { 0b10001, 0b10001, 0b01010, 0b01010, 0b00100 },  // V
-  { 0b10001, 0b10001, 0b10101, 0b11011, 0b10001 },  // W
-  { 0b10001, 0b01010, 0b00100, 0b01010, 0b10001 },  // X
-  { 0b10001, 0b01010, 0b00100, 0b00100, 0b00100 },  // Y
-  { 0b11111, 0b00010, 0b00100, 0b01000, 0b11111 },  // Z
+CRGBArray<NUM_LEDS> leds;
+uint8_t max_bright = 10;
+// definition of display colors
+CRGB myRGBcolor_zyvx(255, 0, 0);
+const uint8_t maxBitmap_zyvx[] = {
+  B00000, B11011, B00000, B10001, B01110
+};
+CRGB myRGBcolor_x6aa(16, 255, 0);
+const uint8_t maxBitmap_x6aa[] = {
+  B00000, B11011, B00000, B10001, B01110
 };
 
-// Function to draw a character on the matrix with a horizontal flip
-void drawChar(char c) {
-  Serial.println("drawing character: " + String(c));  // Correct string concatenation
-
-  clearMatrix();  // Clear the matrix before drawing a new character
-
-  if (c < 'A' || c > 'Z') return;  // Only draw uppercase letters
-
-  int index = c - 'A';  // Get the index in the font array
-
-  // Iterate through the 5 rows of the character
-  for (int y = 0; y < 5; y++) {
-    uint8_t rowData = font[index][y];  // Get the row data for the character
-
-    // Reverse the bits in the row to mirror the character horizontally
-    uint8_t reversedRow = 0;
-    for (int bit = 0; bit < 5; bit++) {
-      if (rowData & (1 << bit)) {
-        reversedRow |= (1 << (4 - bit));  // Flip the bits within the row
-      }
-    }
-
-    // Iterate through the 5 columns of the reversed row
-    for (int x = 0; x < 5; x++) {
-      // Check if the bit is set (pixel is on)
-      if (reversedRow & (1 << (4 - x))) {  // Check each bit from left to right after reversal
-
-        // Calculate LED index according to your matrix layout
-        int ledIndex = (x * 5) + y;  // Corrected index calculation for the matrix layout
-
-        // Draw the pixel if it is within the matrix boundaries
-        if (ledIndex >= 0 && ledIndex < PixelCount) {
-          strip.SetPixelColor(ledIndex, white);  // Set the pixel to white
+void plotMatrixChar(CRGB (*matrix)[5], CRGB myRGBcolor, int x, char character, int width, int height) {
+  int y = 0;
+  if (width > 0 && height > 0) {
+    int charIndex = (int)character - 32;
+    int xBitsToProcess = width;
+    for (int i = 0; i < height; i++) {
+      byte fontLine = FontData[charIndex][i];
+      for (int bitCount = 0; bitCount < xBitsToProcess; bitCount++) {
+        CRGB pixelColour = CRGB(0, 0, 0);
+        if (fontLine & 0b10000000) {
+          pixelColour = myRGBcolor;
+        }
+        fontLine = fontLine << 1;
+        int xpos = x + bitCount;
+        int ypos = y + i;
+        if (xpos < 0 || xpos > 10 || ypos < 0 || ypos > 5)
+          ;
+        else {
+          matrix[xpos][ypos] = pixelColour;
         }
       }
     }
   }
-  strip.Show();  // Show the updated display
 }
 
+void ShowChar(char myChar, CRGB myRGBcolor) {
+  CRGB matrixBackColor[10][5];
+  int mapLED[] = { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24 };
+  plotMatrixChar(matrixBackColor, myRGBcolor, 0, myChar, 5, 5);
+  for (int x = 0; x < NUM_COLUMNS; x++) {
+    for (int y = 0; y < NUM_ROWS; y++) {
+      int stripIdx = mapLED[y * NUM_COLUMNS + x];
+      // Serial.println("index:" + String(stripIdx) + ", value: " + String(matrixBackColor[x][y]));
+      leds[stripIdx] = matrixBackColor[x][y];
+    }
+  }
+  FastLED.show();
+  FastLED.delay(30);
+}
 
-// Function to clear the matrix
-void clearMatrix() {
-  for (int i = 0; i < PixelCount; i++) {
-    strip.SetPixelColor(i, black);  // Set all pixels to black (off)
+void ShowString(String sMessage, CRGB myRGBcolor) {
+  CRGB matrixBackColor[10][5];
+  int mapLED[] = { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24 };
+  int messageLength = sMessage.length();
+  Serial.println("string length:" + String(messageLength));
+  for (int x = 0; x < messageLength; x++) {
+    char myChar = sMessage[x];
+    plotMatrixChar(matrixBackColor, myRGBcolor, 0, myChar, 5, 5);
+    for (int sft = 0; sft <= 5; sft++) {
+      for (int x = 0; x < NUM_COLUMNS; x++) {
+        for (int y = 0; y < 5; y++) {
+          int stripIdx = mapLED[y * 5 + x];
+          if (x + sft < 5) {
+            leds[stripIdx] = matrixBackColor[x + sft][y];
+          } else {
+            leds[stripIdx] = CRGB(0, 0, 0);
+          }
+        }
+      }
+      FastLED.show();
+      FastLED.delay(100);
+    }
   }
 }
 
@@ -238,8 +242,14 @@ void setupWiFi() {
 }
 
 void setupI2C() {
+  Serial.println("define I2C pins");
+  i2cCustomPins.begin(I2C_SDA, I2C_SCL, 100000);
+
+  Serial.println("construct MaqueenPlus object");
+  mp = new DFRobot_MaqueenPlus(&i2cCustomPins, 0x10);
+
   Serial.println("initialize MaqueenPlus I2C communication");
-  mp.begin();  // Initialize I2C communication with the MaqueenPlus
+  mp->begin();
 }
 
 void setupWebServer() {
@@ -254,16 +264,15 @@ void setupWebServer() {
 }
 
 void setupLEDMatrix() {
-  Serial.println("Initializing LED matrix...");
-  strip.Begin();
-  strip.Show();  // Ensure all LEDs are off initially
-  Serial.println("LED matrix initialized.");
+  // initialize ESP32 board LED matrix
+  FastLED.addLeds<LED_TYPE, LED_PIN, COLOR_ORDER>(leds, NUM_LEDS);
+  FastLED.setBrightness(max_bright);
 }
 
 void setupRFID() {
-    SPI.begin();
-    mfrc522.PCD_Init();
-    Serial.println("RFID reader initialized. Scan an RFID tag...");
+  // SPI.begin();
+  // mfrc522.PCD_Init();
+  // Serial.println("RFID reader initialized. Scan an RFID tag...");
 }
 
 // Function to move the robot car forward
@@ -271,9 +280,9 @@ void setupRFID() {
 void moveForward() {
   int moveSpeed = constrain(motorSpeed, 0, 100);  // Limit speed to 100
   Serial.println("moving forward at speed " + String(moveSpeed));
-  drawChar('F');
-  mp.setRGB(mp.eALL, mp.eRED);
-  mp.motorControl(mp.eALL, mp.eCW, moveSpeed);
+  ShowChar('F', myRGBcolor_zyvx);
+  mp->setRGB(mp->eALL, mp->eRED);
+  mp->motorControl(mp->eALL, mp->eCW, moveSpeed);
 }
 
 // Function to move the robot car backward
@@ -281,9 +290,9 @@ void moveForward() {
 void moveBackward() {
   int moveSpeed = constrain(motorSpeed, 0, 100);  // Limit speed to 100
   Serial.println("moving backward at speed " + String(moveSpeed));
-  drawChar('B');
-  mp.setRGB(mp.eALL, mp.eRED);
-  mp.motorControl(mp.eALL, mp.eCCW, moveSpeed);
+  ShowChar('B', myRGBcolor_zyvx);
+  mp->setRGB(mp->eALL, mp->eRED);
+  mp->motorControl(mp->eALL, mp->eCCW, moveSpeed);
 }
 
 // Function to turn the robot car to the left
@@ -292,11 +301,11 @@ void moveBackward() {
 void turnLeft() {
   int turnSpeed = constrain(motorSpeed, 0, 50);  // Limit speed to
   Serial.println("turning left at speed " + String(turnSpeed));
-  drawChar('L');
-  mp.setRGB(mp.eLEFT, mp.eRED);
-  mp.setRGB(mp.eRIGHT, mp.eNO);
-  mp.motorControl(mp.eLEFT, mp.eCCW, turnSpeed);
-  mp.motorControl(mp.eRIGHT, mp.eCW, turnSpeed);
+  ShowChar('L', myRGBcolor_zyvx);
+  mp->setRGB(mp->eLEFT, mp->eRED);
+  mp->setRGB(mp->eRIGHT, mp->eNO);
+  mp->motorControl(mp->eLEFT, mp->eCCW, turnSpeed);
+  mp->motorControl(mp->eRIGHT, mp->eCW, turnSpeed);
 }
 
 // Function to turn the robot car to the right
@@ -305,57 +314,57 @@ void turnLeft() {
 void turnRight() {
   int turnSpeed = constrain(motorSpeed, 0, 50);  // Limit speed to 50
   Serial.println("turning right at speed " + String(turnSpeed));
-  drawChar('R');
-  mp.setRGB(mp.eRIGHT, mp.eRED);
-  mp.setRGB(mp.eLEFT, mp.eNO);
-  mp.motorControl(mp.eLEFT, mp.eCW, turnSpeed);
-  mp.motorControl(mp.eRIGHT, mp.eCCW, turnSpeed);
+  ShowChar('R', myRGBcolor_zyvx);
+  mp->setRGB(mp->eRIGHT, mp->eRED);
+  mp->setRGB(mp->eLEFT, mp->eNO);
+  mp->motorControl(mp->eLEFT, mp->eCW, turnSpeed);
+  mp->motorControl(mp->eRIGHT, mp->eCCW, turnSpeed);
 }
 
 // Function to stop both motors of the robot car
 // This function stops all movement by setting both motors to 0 speed.
 void stop() {
   Serial.println("stopping");
-  drawChar('S');
-  mp.setRGB(mp.eALL, mp.eNO);
-  mp.motorControl(mp.eALL, mp.eCW, 0);
-  mp.motorControl(mp.eALL, mp.eCCW, 0);
+  ShowChar('S', myRGBcolor_zyvx);
+  mp->setRGB(mp->eALL, mp->eNO);
+  mp->motorControl(mp->eALL, mp->eCW, 0);
+  mp->motorControl(mp->eALL, mp->eCCW, 0);
 }
 
-String readRFID() {
-    if (!mfrc522.PICC_IsNewCardPresent()) return "";  // Return empty string if no card is present
-    if (!mfrc522.PICC_ReadCardSerial()) return "";    // Return empty string if reading fails
+// String readRFID() {
+//     if (!mfrc522.PICC_IsNewCardPresent()) return "";  // Return empty string if no card is present
+//     if (!mfrc522.PICC_ReadCardSerial()) return "";    // Return empty string if reading fails
 
-    // Convert UID to a string
-    String uidString = "";
-    for (byte i = 0; i < mfrc522.uid.size; i++) {
-        if (mfrc522.uid.uidByte[i] < 0x10) uidString += "0";  // Add leading zero for single hex digit
-        uidString += String(mfrc522.uid.uidByte[i], HEX);     // Convert each byte to a hex string
-    }
+//     // Convert UID to a string
+//     String uidString = "";
+//     for (byte i = 0; i < mfrc522.uid.size; i++) {
+//         if (mfrc522.uid.uidByte[i] < 0x10) uidString += "0";  // Add leading zero for single hex digit
+//         uidString += String(mfrc522.uid.uidByte[i], HEX);     // Convert each byte to a hex string
+//     }
 
-    uidString.toUpperCase();  // Convert to uppercase for consistency
-    mfrc522.PICC_HaltA();     // Halt PICC (Proximity Integrated Circuit Card)
+//     uidString.toUpperCase();  // Convert to uppercase for consistency
+//     mfrc522.PICC_HaltA();     // Halt PICC (Proximity Integrated Circuit Card)
 
-    return uidString;  // Return the UID as a string
-}
+//     return uidString;  // Return the UID as a string
+// }
 
-void sendUIDToServer(String uid) {
-    // Construct the URL
-    String url = String(serverIP) + String(endpoint) + "?uid=" + uid;
-    Serial.println("Sending UID to server: " + url);
+// void sendUIDToServer(String uid) {
+//     // Construct the URL
+//     String url = String(studentAppIP) + String(endpoint) + "?uid=" + uid;
+//     Serial.println("Sending UID to server: " + url);
 
-    http.begin(url);  // Specify the URL
-    int httpResponseCode = http.GET();  // Send the request
+//     http.begin(url);  // Specify the URL
+//     int httpResponseCode = http.GET();  // Send the request
 
-    if (httpResponseCode > 0) {
-        Serial.println("HTTP Response code: " + String(httpResponseCode));
-        String payload = http.getString();
-        Serial.println("Response from server: " + payload);
-    } else {
-        Serial.println("Error on sending GET: " + String(httpResponseCode));
-    }
-    http.end();  // Free resources
-}
+//     if (httpResponseCode > 0) {
+//         Serial.println("HTTP Response code: " + String(httpResponseCode));
+//         String payload = http.getString();
+//         Serial.println("Response from server: " + payload);
+//     } else {
+//         Serial.println("Error on sending GET: " + String(httpResponseCode));
+//     }
+//     http.end();  // Free resources
+// }
 
 void setup() {
   // initialize serial print
@@ -377,9 +386,9 @@ void setup() {
   setupLEDMatrix();
 
   // Additional initialization for the MaqueenPlus robot car
-  mp.setRGB(mp.eALL, mp.eNO);
+  mp->setRGB(mp->eALL, mp->eNO);
   // enable MaqueenPlus PID operation control
-  mp.PIDSwitch(mp.eON);
+  mp->PIDSwitch(mp->eON);
 }
 
 void loop() {
@@ -387,27 +396,23 @@ void loop() {
   // handle incoming requests
   server.handleClient();
 
-  String uuid = readRFID();
-  if (rfidUID != "") {  // Check if a valid UID is read
-        Serial.println("Detected RFID Tag UID: " + rfidUID);
-        sendUIDToServer(rfidUID);  // Send UID to the server
-    }
+  // String uuid = readRFID();
+  // if (uuid != "") {  // Check if a valid UID is read
+  //       Serial.println("Detected RFID Tag UID: " + uuid);
+  //       sendUIDToServer(uuid);  // Send UID to the server
+  //   }
 
 
   if (dir == "forward") {
-    //stop();
+
     moveForward();
   } else if (dir == "backward") {
-    //stop();
     moveBackward();
   } else if (dir == "left") {
-    //stop();
     turnLeft();
   } else if (dir == "right") {
-    //stop();
     turnRight();
   } else if (dir == "stop") {
     stop();
   }
 }
-
