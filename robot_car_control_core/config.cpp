@@ -1,10 +1,10 @@
 // config.cpp
 #include "config.h"
 
-const char* ssid = "NSSM";        // Define network ssid
-const char* password = "NSSM1234"; // Define password
+const char* ssid = "TBpoint";        // Define network ssid
+const char* password = "Turtlebot4"; // Define password
 
-const char* studentAppIP = "http://192.168.137.200";  // IP address of the student app
+char studentAppIP[16] = "192.168.137.200";  // IP address of the student app
 const char* endpoint = "/receiveUID";  // endpoint for sending detected RFID IDs
 
 

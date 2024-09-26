@@ -6,12 +6,13 @@
 #include <DFRobot_MaqueenPlus.h>
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
-#include <SPI.h>
-#include <MFRC522.h>
+//#include <SPI.h>
+//#include <MFRC522.h>
 // Include the config file
 #include "config.h"
 
 // **************** global app variables *********************
+
 String dir = "stop";  // default direction
 int motorSpeed = 50;  // default speed
 String taskId = "0";  // default task Id
@@ -25,7 +26,7 @@ HTTPClient http;  // create HTTP client
 #define RST_PIN 26  // Configurable, see typical pin layout above
 #define SS_PIN 32   // Configurable, see typical pin layout above
 
-MFRC522 mfrc522(SS_PIN, RST_PIN);  // Create MFRC522 instance
+//MFRC522 mfrc522(SS_PIN, RST_PIN);  // Create MFRC522 instance
 
 // **************** Mbits I2C settings *********************
 // define I2C data and clock pins used on Mbits ESP32 board
@@ -134,6 +135,19 @@ void handleRoot() {
 void handleMove() {
 
   Serial.println("received an HTTP request to /move");
+
+  // Get the client IP address as an IPAddress object
+  IPAddress clientIP = server.client().remoteIP();
+
+  // Convert the IPAddress to a String
+  
+  String clientIPStr = clientIP.toString();
+
+  // Copy the String to the studentAppIP char array
+  clientIPStr.toCharArray(studentAppIP, sizeof(studentAppIP));
+
+  // Print the IP address
+  Serial.println(studentAppIP);
 
   StaticJsonDocument<100> JSONdocument;
 
@@ -269,13 +283,13 @@ void setupLEDMatrix() {
   FastLED.setBrightness(max_bright);
 }
 
-void setupRFID() {
-  SPI.begin();
-  mfrc522.PCD_Init();
-  delay(4);                           // Optional delay. Some board do need more time after init to be ready
-  mfrc522.PCD_DumpVersionToSerial();  // Show details of PCD - MFRC522 Card Reader details
-  Serial.println("RFID reader initialized. Scan an RFID tag...");
-}
+// void setupRFID() {
+//   SPI.begin();
+//   mfrc522.PCD_Init();
+//   delay(4);                           // Optional delay. Some board do need more time after init to be ready
+//   mfrc522.PCD_DumpVersionToSerial();  // Show details of PCD - MFRC522 Card Reader details
+//   Serial.println("RFID reader initialized. Scan an RFID tag...");
+// }
 
 // Function to move the robot car forward
 // This function sets both motors to move forward (clockwise) at a given speed.
@@ -333,40 +347,40 @@ void stop() {
   mp->motorControl(mp->eALL, mp->eCCW, 0);
 }
 
-String readRFID() {
-  if (!mfrc522.PICC_IsNewCardPresent()) return "";  // Return empty string if no card is present
-  if (!mfrc522.PICC_ReadCardSerial()) return "";    // Return empty string if reading fails
+// String readRFID() {
+//   if (!mfrc522.PICC_IsNewCardPresent()) return "";  // Return empty string if no card is present
+//   if (!mfrc522.PICC_ReadCardSerial()) return "";    // Return empty string if reading fails
 
-  // Convert UID to a string
-  String uidString = "";
-  for (byte i = 0; i < mfrc522.uid.size; i++) {
-    if (mfrc522.uid.uidByte[i] < 0x10) uidString += "0";  // Add leading zero for single hex digit
-    uidString += String(mfrc522.uid.uidByte[i], HEX);     // Convert each byte to a hex string
-  }
+//   // Convert UID to a string
+//   String uidString = "";
+//   for (byte i = 0; i < mfrc522.uid.size; i++) {
+//     if (mfrc522.uid.uidByte[i] < 0x10) uidString += "0";  // Add leading zero for single hex digit
+//     uidString += String(mfrc522.uid.uidByte[i], HEX);     // Convert each byte to a hex string
+//   }
 
-  uidString.toUpperCase();  // Convert to uppercase for consistency
-  mfrc522.PICC_HaltA();     // Halt PICC (Proximity Integrated Circuit Card)
+//   uidString.toUpperCase();  // Convert to uppercase for consistency
+//   mfrc522.PICC_HaltA();     // Halt PICC (Proximity Integrated Circuit Card)
 
-  return uidString;  // Return the UID as a string
-}
+//   return uidString;  // Return the UID as a string
+// }
 
-void sendUIDToServer(String uid) {
-  // Construct the URL
-  String url = String(studentAppIP) + String(endpoint) + "?uid=" + uid;
-  Serial.println("Sending UID to server: " + url);
+// void sendUIDToServer(String uid) {
+//   // Construct the URL
+//   String url = String(studentAppIP) + String(endpoint) + "?uid=" + uid;
+//   Serial.println("Sending UID to server: " + url);
 
-  http.begin(url);                    // Specify the URL
-  int httpResponseCode = http.GET();  // Send the request
+//   http.begin(url);                    // Specify the URL
+//   int httpResponseCode = http.GET();  // Send the request
 
-  if (httpResponseCode > 0) {
-    Serial.println("HTTP Response code: " + String(httpResponseCode));
-    String payload = http.getString();
-    Serial.println("Response from server: " + payload);
-  } else {
-    Serial.println("Error on sending GET: " + String(httpResponseCode));
-  }
-  http.end();  // Free resources
-}
+//   if (httpResponseCode > 0) {
+//     Serial.println("HTTP Response code: " + String(httpResponseCode));
+//     String payload = http.getString();
+//     Serial.println("Response from server: " + payload);
+//   } else {
+//     Serial.println("Error on sending GET: " + String(httpResponseCode));
+//   }
+//   http.end();  // Free resources
+// }
 
 void setup() {
   // initialize serial print
@@ -379,7 +393,7 @@ void setup() {
   setupI2C();
 
   // Step 3: Initialize RFID reader
-  setupRFID();
+ // setupRFID();
 
   // Step 4: Set up the web server
   setupWebServer();
@@ -398,11 +412,11 @@ void loop() {
   // handle incoming requests
   server.handleClient();
 
-  String uuid = readRFID();
-  if (uuid != "") {  // Check if a valid UID is read
-    Serial.println("Detected RFID Tag UID: " + uuid);
-    sendUIDToServer(uuid);  // Send UID to the server
-  }
+  // String uuid = readRFID();
+  // if (uuid != "") {  // Check if a valid UID is read
+  //   Serial.println("Detected RFID Tag UID: " + uuid);
+  //   sendUIDToServer(uuid);  // Send UID to the server
+  // }
 
   if (dir == "forward") {
 
