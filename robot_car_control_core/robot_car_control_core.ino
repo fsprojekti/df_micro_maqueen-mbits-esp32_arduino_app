@@ -1,18 +1,21 @@
-#include <FastLED.h>
-#include "Dots5x5font.h"
 #include <WiFi.h>
 #include <WebServer.h>
 #include <ESPmDNS.h>
 #include <DFRobot_MaqueenPlus.h>
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
-//#include <SPI.h>
-//#include <MFRC522.h>
+#include <Wire.h>
+#include <PN532.h> // lib for PN532 NFC/RFID reader
+#include <PN532_I2C.h> // I2C communication for PN532 NFC/RFID reader
+#include <esp_system.h>
+#include <esp_wifi.h>
+#include <esp_err.h>
+
 // Include the config file
 #include "config.h"
 
-// **************** global app variables *********************
 
+// **************** global app variables *********************
 String dir = "stop";  // default direction
 int motorSpeed = 50;  // default speed
 String taskId = "0";  // default task Id
@@ -21,109 +24,24 @@ String taskId = "0";  // default task Id
 WebServer server(8000);
 HTTPClient http;  // create HTTP client
 
-// **************** RFID parameters *********************
-// RFID pin definitions for Mbits (ESP32-based)
-#define RST_PIN 26  // Configurable, see typical pin layout above
-#define SS_PIN 32   // Configurable, see typical pin layout above
-
-//MFRC522 mfrc522(SS_PIN, RST_PIN);  // Create MFRC522 instance
-
 // **************** Mbits I2C settings *********************
 // define I2C data and clock pins used on Mbits ESP32 board
 #define I2C_SDA 22
 #define I2C_SCL 21
+
+// **************** RFID parameters *********************
+// #define PN532_I2C_ADDRESS (0x48 >> 1)  // Adafruit lib expects 7-bit addr
+PN532_I2C pn532i2c(Wire);
+PN532 nfc(pn532i2c);
 
 // create a pointer to DFRobot_MaqueenPlus object
 // --> this is done because we need to manually set I2C pins and create the DFRobot_MaqueenPlus object inside the setup() function
 // --> a DFRobot_MaqueenPlus object is accessed via a pointer throughout the program
 DFRobot_MaqueenPlus* mp;
 // a TwoWire object is needed for manual I2C pins definition
-TwoWire i2cCustomPins = TwoWire(0);
+// TwoWire i2cCustomPins = TwoWire(0);
+// NOTE: this is now not needed because we use the normal Wire class
 
-// **************** Mbits LED matrix settings *********************
-#define NUM_ROWS 5
-#define NUM_COLUMNS 5
-#define NUM_LEDS (NUM_ROWS * NUM_COLUMNS)
-#define LED_PIN 13
-#define LED_TYPE WS2812B
-#define COLOR_ORDER GRB
-
-CRGBArray<NUM_LEDS> leds;
-uint8_t max_bright = 10;
-// definition of display colors
-CRGB myRGBcolor_zyvx(255, 0, 0);
-const uint8_t maxBitmap_zyvx[] = {
-  B00000, B11011, B00000, B10001, B01110
-};
-CRGB myRGBcolor_x6aa(16, 255, 0);
-const uint8_t maxBitmap_x6aa[] = {
-  B00000, B11011, B00000, B10001, B01110
-};
-
-void plotMatrixChar(CRGB (*matrix)[5], CRGB myRGBcolor, int x, char character, int width, int height) {
-  int y = 0;
-  if (width > 0 && height > 0) {
-    int charIndex = (int)character - 32;
-    int xBitsToProcess = width;
-    for (int i = 0; i < height; i++) {
-      byte fontLine = FontData[charIndex][i];
-      for (int bitCount = 0; bitCount < xBitsToProcess; bitCount++) {
-        CRGB pixelColour = CRGB(0, 0, 0);
-        if (fontLine & 0b10000000) {
-          pixelColour = myRGBcolor;
-        }
-        fontLine = fontLine << 1;
-        int xpos = x + bitCount;
-        int ypos = y + i;
-        if (xpos < 0 || xpos > 10 || ypos < 0 || ypos > 5)
-          ;
-        else {
-          matrix[xpos][ypos] = pixelColour;
-        }
-      }
-    }
-  }
-}
-
-void ShowChar(char myChar, CRGB myRGBcolor) {
-  CRGB matrixBackColor[10][5];
-  int mapLED[] = { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24 };
-  plotMatrixChar(matrixBackColor, myRGBcolor, 0, myChar, 5, 5);
-  for (int x = 0; x < NUM_COLUMNS; x++) {
-    for (int y = 0; y < NUM_ROWS; y++) {
-      int stripIdx = mapLED[y * NUM_COLUMNS + x];
-      // Serial.println("index:" + String(stripIdx) + ", value: " + String(matrixBackColor[x][y]));
-      leds[stripIdx] = matrixBackColor[x][y];
-    }
-  }
-  FastLED.show();
-  FastLED.delay(30);
-}
-
-void ShowString(String sMessage, CRGB myRGBcolor) {
-  CRGB matrixBackColor[10][5];
-  int mapLED[] = { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24 };
-  int messageLength = sMessage.length();
-  Serial.println("string length:" + String(messageLength));
-  for (int x = 0; x < messageLength; x++) {
-    char myChar = sMessage[x];
-    plotMatrixChar(matrixBackColor, myRGBcolor, 0, myChar, 5, 5);
-    for (int sft = 0; sft <= 5; sft++) {
-      for (int x = 0; x < NUM_COLUMNS; x++) {
-        for (int y = 0; y < 5; y++) {
-          int stripIdx = mapLED[y * 5 + x];
-          if (x + sft < 5) {
-            leds[stripIdx] = matrixBackColor[x + sft][y];
-          } else {
-            leds[stripIdx] = CRGB(0, 0, 0);
-          }
-        }
-      }
-      FastLED.show();
-      FastLED.delay(100);
-    }
-  }
-}
 
 // **************** web server handles *********************
 void handleRoot() {
@@ -140,7 +58,6 @@ void handleMove() {
   IPAddress clientIP = server.client().remoteIP();
 
   // Convert the IPAddress to a String
-  
   String clientIPStr = clientIP.toString();
 
   // Copy the String to the studentAppIP char array
@@ -206,6 +123,42 @@ void handleNotFound() {
   server.send(404, "text/plain", message);
 }
 
+// Wiggle SCL to release SDA if PN532 or another device is holding it low
+static void i2cBusUnstick(int sdaPin, int sclPin) {
+  pinMode(sdaPin, INPUT_PULLUP);
+  pinMode(sclPin, OUTPUT);
+
+  // If SDA is stuck low, pulse SCL up to 16 times
+  for (int i = 0; i < 16 && digitalRead(sdaPin) == LOW; i++) {
+    digitalWrite(sclPin, LOW);
+    delayMicroseconds(5);
+    digitalWrite(sclPin, HIGH);
+    delayMicroseconds(5);
+  }
+
+  // Send a STOP condition
+  pinMode(sdaPin, OUTPUT);
+  digitalWrite(sdaPin, HIGH);
+  delayMicroseconds(5);
+
+  // Release pins
+  pinMode(sdaPin, INPUT_PULLUP);
+  pinMode(sclPin, INPUT_PULLUP);
+}
+
+// Choose any LAA MAC you like; keep it unique on your LAN.
+static const uint8_t FALLBACK_MAC[6] = { 0x02, 0xA1, 0xB2, 0xC3, 0xD4, 0x15 };
+
+static void ensureWifiMac() {
+  // Try to read factory MAC; if it fails, set our own base MAC before WiFi starts.
+  uint8_t tmp[6];
+  esp_err_t ok = esp_efuse_mac_get_default(tmp);  // just a probe
+  if (ok != ESP_OK) {
+    // Install base MAC for both STA/AP derivations
+    esp_base_mac_addr_set(FALLBACK_MAC);
+  }
+}
+
 void setupWiFi() {
   Serial.print("Connecting to ");
   Serial.println(ssid);
@@ -257,10 +210,15 @@ void setupWiFi() {
 
 void setupI2C() {
   Serial.println("define I2C pins");
-  i2cCustomPins.begin(I2C_SDA, I2C_SCL, 50000);
+
+  // Try to release the bus before starting Wire
+  i2cBusUnstick(I2C_SDA, I2C_SCL);
+
+  Wire.begin(I2C_SDA, I2C_SCL);
+  Wire.setClock(50000);  // 50kHz for PN532 stability
 
   Serial.println("construct MaqueenPlus object");
-  mp = new DFRobot_MaqueenPlus(&i2cCustomPins, 0x10);
+  mp = new DFRobot_MaqueenPlus(&Wire, 0x10);
 
   Serial.println("initialize MaqueenPlus I2C communication");
   mp->begin();
@@ -277,26 +235,51 @@ void setupWebServer() {
   Serial.println("HTTP server started");
 }
 
-void setupLEDMatrix() {
-  // initialize ESP32 board LED matrix
-  FastLED.addLeds<LED_TYPE, LED_PIN, COLOR_ORDER>(leds, NUM_LEDS);
-  FastLED.setBrightness(max_bright);
+void setupRFID() {
+  Serial.println("Setting up PN532 (I2C) ...");
+
+  //resetPN532();
+  nfc.begin();
+  delay(200);
+
+  uint32_t versiondata = nfc.getFirmwareVersion();
+  if (!versiondata) {
+    Serial.println("Didn't find PN532 board");
+    while (1); // halt if not found
+  }
+
+  Serial.print("Found PN532 firmware ver. ");
+  Serial.print((versiondata >> 16) & 0xFF, DEC);
+  Serial.print(".");
+  Serial.println((versiondata >> 8) & 0xFF, DEC);
+
+  nfc.SAMConfig();  // configure to read passive targets
+  Serial.println("PN532 initialized (I2C). Scan an RFID/NFC tag...");
 }
 
-// void setupRFID() {
-//   SPI.begin();
-//   mfrc522.PCD_Init();
-//   delay(4);                           // Optional delay. Some board do need more time after init to be ready
-//   mfrc522.PCD_DumpVersionToSerial();  // Show details of PCD - MFRC522 Card Reader details
-//   Serial.println("RFID reader initialized. Scan an RFID tag...");
-// }
+String readRFID() {
+  uint8_t uid[7];
+  uint8_t uidLength;
+
+  // timeout 500ms to avoid blocking
+  if (nfc.readPassiveTargetID(PN532_MIFARE_ISO14443A, uid, &uidLength, 500)) {
+    String uidString = "";
+    for (byte i = 0; i < uidLength; i++) {
+      if (uid[i] < 0x10) uidString += "0";
+      uidString += String(uid[i], HEX);
+    }
+    uidString.toUpperCase();
+    return uidString;
+  }
+  return ""; // no card
+}
 
 // Function to move the robot car forward
 // This function sets both motors to move forward (clockwise) at a given speed.
 void moveForward() {
   int moveSpeed = constrain(motorSpeed, 0, 100);  // Limit speed to 100
   Serial.println("moving forward at speed " + String(moveSpeed));
-  ShowChar('F', myRGBcolor_zyvx);
+  //ShowChar('F', myRGBcolor_zyvx);
   mp->setRGB(mp->eALL, mp->eRED);
   mp->motorControl(mp->eALL, mp->eCW, moveSpeed);
 }
@@ -306,7 +289,7 @@ void moveForward() {
 void moveBackward() {
   int moveSpeed = constrain(motorSpeed, 0, 100);  // Limit speed to 100
   Serial.println("moving backward at speed " + String(moveSpeed));
-  ShowChar('B', myRGBcolor_zyvx);
+  //ShowChar('B', myRGBcolor_zyvx);
   mp->setRGB(mp->eALL, mp->eRED);
   mp->motorControl(mp->eALL, mp->eCCW, moveSpeed);
 }
@@ -317,7 +300,7 @@ void moveBackward() {
 void turnLeft() {
   int turnSpeed = constrain(motorSpeed, 0, 50);  // Limit speed to
   Serial.println("turning left at speed " + String(turnSpeed));
-  ShowChar('L', myRGBcolor_zyvx);
+  //ShowChar('L', myRGBcolor_zyvx);
   mp->setRGB(mp->eLEFT, mp->eRED);
   mp->setRGB(mp->eRIGHT, mp->eNO);
   mp->motorControl(mp->eLEFT, mp->eCCW, turnSpeed);
@@ -330,7 +313,7 @@ void turnLeft() {
 void turnRight() {
   int turnSpeed = constrain(motorSpeed, 0, 50);  // Limit speed to 50
   Serial.println("turning right at speed " + String(turnSpeed));
-  ShowChar('R', myRGBcolor_zyvx);
+  //ShowChar('R', myRGBcolor_zyvx);
   mp->setRGB(mp->eRIGHT, mp->eRED);
   mp->setRGB(mp->eLEFT, mp->eNO);
   mp->motorControl(mp->eLEFT, mp->eCW, turnSpeed);
@@ -341,50 +324,35 @@ void turnRight() {
 // This function stops all movement by setting both motors to 0 speed.
 void stop() {
   //Serial.println("stopping");
-  ShowChar('S', myRGBcolor_zyvx);
+  //ShowChar('S', myRGBcolor_zyvx);
   mp->setRGB(mp->eALL, mp->eNO);
   mp->motorControl(mp->eALL, mp->eCW, 0);
   mp->motorControl(mp->eALL, mp->eCCW, 0);
 }
 
-// String readRFID() {
-//   if (!mfrc522.PICC_IsNewCardPresent()) return "";  // Return empty string if no card is present
-//   if (!mfrc522.PICC_ReadCardSerial()) return "";    // Return empty string if reading fails
+void sendUIDToServer(String uid) {
+  // Construct the URL
+  String url = String(studentAppIP) + String(endpoint) + "?uid=" + uid;
+  Serial.println("Sending UID to server: " + url);
 
-//   // Convert UID to a string
-//   String uidString = "";
-//   for (byte i = 0; i < mfrc522.uid.size; i++) {
-//     if (mfrc522.uid.uidByte[i] < 0x10) uidString += "0";  // Add leading zero for single hex digit
-//     uidString += String(mfrc522.uid.uidByte[i], HEX);     // Convert each byte to a hex string
-//   }
+  http.begin(url);                    // Specify the URL
+  int httpResponseCode = http.GET();  // Send the request
 
-//   uidString.toUpperCase();  // Convert to uppercase for consistency
-//   mfrc522.PICC_HaltA();     // Halt PICC (Proximity Integrated Circuit Card)
-
-//   return uidString;  // Return the UID as a string
-// }
-
-// void sendUIDToServer(String uid) {
-//   // Construct the URL
-//   String url = String(studentAppIP) + String(endpoint) + "?uid=" + uid;
-//   Serial.println("Sending UID to server: " + url);
-
-//   http.begin(url);                    // Specify the URL
-//   int httpResponseCode = http.GET();  // Send the request
-
-//   if (httpResponseCode > 0) {
-//     Serial.println("HTTP Response code: " + String(httpResponseCode));
-//     String payload = http.getString();
-//     Serial.println("Response from server: " + payload);
-//   } else {
-//     Serial.println("Error on sending GET: " + String(httpResponseCode));
-//   }
-//   http.end();  // Free resources
-// }
+  if (httpResponseCode > 0) {
+    Serial.println("HTTP Response code: " + String(httpResponseCode));
+    String payload = http.getString();
+    Serial.println("Response from server: " + payload);
+  } else {
+    Serial.println("Error on sending GET: " + String(httpResponseCode));
+  }
+  http.end();  // Free resources
+}
 
 void setup() {
   // initialize serial print
   Serial.begin(115200);
+
+  ensureWifiMac();
 
   // Step 1: Set up WiFi connection
   setupWiFi();
@@ -393,13 +361,14 @@ void setup() {
   setupI2C();
 
   // Step 3: Initialize RFID reader
- // setupRFID();
+  delay(250);  
+  setupRFID();
 
   // Step 4: Set up the web server
   setupWebServer();
 
   // Step 5: Initialize the LED matrix
-  setupLEDMatrix();
+  //setupLEDMatrix();
 
   // Additional initialization for the MaqueenPlus robot car
   mp->setRGB(mp->eALL, mp->eNO);
@@ -412,11 +381,11 @@ void loop() {
   // handle incoming requests
   server.handleClient();
 
-  // String uuid = readRFID();
-  // if (uuid != "") {  // Check if a valid UID is read
-  //   Serial.println("Detected RFID Tag UID: " + uuid);
-  //   sendUIDToServer(uuid);  // Send UID to the server
-  // }
+  String uuid = readRFID();
+  if (uuid != "") {  // Check if a valid UID is read
+    Serial.println("Detected RFID Tag UID: " + uuid);
+    //sendUIDToServer(uuid);  // Send UID to the server
+  }
 
   if (dir == "forward") {
 
