@@ -1,7 +1,7 @@
-# Arduino Application for DFRobot micro:Maqueen Plus EN V1 Robot Car
+# Arduino Application for DFRobot micro:Maqueen Plus V2 Robot Car
 
-## DFRobot micro:Maqueen Plus EN V1 Robot Car
-An Advanced STEM Education Robot with six line-tracking sensors, IR received, ultrasonic sensor, RGB ambient lights, LED car lights, buzzer etc.
+## DFRobot micro:Maqueen Plus V2 Robot Car
+An Advanced STEM Education Robot with five line-tracking sensors, IR receiver, ultrasonic sensor, RGB ambient lights, LED car lights, buzzer etc.
 For more info check: https://www.dfrobot.com/product-2026.html
 
 ## Mbits ESP32 Development Board
@@ -16,7 +16,7 @@ A pocket-sized microcontroller that has lots of features the same as Microbit V2
 |endpoint|parameters|description|response|
 |----|----|-----------|------------|
 |/move|source, target, taskId|request a move|{status:accept} if request is accepted, {status:reject} if request is not accepted because the car is busy or there are missing parameters in the request
-
+<!--
 ## State of the application after 2022 Summer School on IIoT and blockchain
 * basic functions (line following, decisions at cross-roads): tests in local environment (TP) worked OK, but during the SS2022 the cars had problems manouvering on the grid (track)
 	* **TODO**:
@@ -37,3 +37,4 @@ A pocket-sized microcontroller that has lots of features the same as Microbit V2
 		* uint8_t distance = mp->ultraSonic(mp->eP32,mp->eP25);
 * MBits I2C communication works OK
 * 5x5 LED matrix works OK
+-->
